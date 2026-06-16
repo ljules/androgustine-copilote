@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import fr.augustine.androgustinecopilote.data.CopilotFirestoreRepository
 import fr.augustine.androgustinecopilote.data.CopilotFirestoreState
 import fr.augustine.androgustinecopilote.data.FirestoreConnectionState
+import fr.augustine.androgustinecopilote.data.TrackData
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -14,6 +15,10 @@ import java.util.Locale
 
 data class CopilotUiState(
     val firestoreStatus: String = "Initialisation",
+    val hasSession: Boolean = false,
+    val track: TrackData? = null,
+    val snappedDistanceMRaw: Double? = null,
+    val ghostDistanceMRaw: Double? = null,
     val trackName: String = "-",
     val sessionId: String = "-",
     val status: String = "-",
@@ -71,7 +76,11 @@ class CopilotViewModel(
 
         return CopilotUiState(
             firestoreStatus = state.connectionState.toDisplayText(),
-            trackName = session?.trackName.orDash(),
+            hasSession = session != null,
+            track = state.track,
+            snappedDistanceMRaw = telemetry?.snappedDistanceM,
+            ghostDistanceMRaw = telemetry?.ghostDistanceM,
+            trackName = state.track?.trackName ?: session?.trackName.orDash(),
             sessionId = session?.sessionId.orDash(),
             status = session?.status.orDash(),
             raceStarted = (telemetry?.raceStarted ?: session?.raceStarted).format(),

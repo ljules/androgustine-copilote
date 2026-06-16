@@ -23,6 +23,7 @@ enum class FirestoreConnectionState {
 data class CopilotFirestoreState(
     val session: RaceSessionSummary? = null,
     val telemetry: CopilotTelemetrySnapshot? = null,
+    val track: TrackData? = null,
     val connectionState: FirestoreConnectionState = FirestoreConnectionState.Initializing,
     val errorMessage: String? = null,
 )
@@ -36,6 +37,7 @@ class CopilotFirestoreRepository(
 
     private var sessionListener: ListenerRegistration? = null
     private var telemetryListener: ListenerRegistration? = null
+    private var trackListener: ListenerRegistration? = null
     private var observedSessionId: String? = null
 
     fun start() {
@@ -66,6 +68,7 @@ class CopilotFirestoreRepository(
             .addSnapshotListener { snapshots, error ->
                 if (error != null) {
                     clearTelemetryListener()
+                    clearTrackListener()
                     _state.value = CopilotFirestoreState(
                         connectionState = FirestoreConnectionState.Error,
                         errorMessage = error.message,
@@ -76,6 +79,7 @@ class CopilotFirestoreRepository(
                 val latestSessionDocument = snapshots?.documents?.firstOrNull()
                 if (latestSessionDocument == null) {
                     clearTelemetryListener()
+                    clearTrackListener()
                     observedSessionId = null
                     _state.value = CopilotFirestoreState(connectionState = FirestoreConnectionState.NoSession)
                     return@addSnapshotListener
@@ -86,6 +90,7 @@ class CopilotFirestoreRepository(
                     it.copy(
                         session = session,
                         telemetry = if (observedSessionId == session.sessionId) it.telemetry else null,
+                        track = if (observedSessionId == session.sessionId) it.track else null,
                         connectionState = FirestoreConnectionState.WaitingForTelemetry,
                         errorMessage = null,
                     )
@@ -94,6 +99,7 @@ class CopilotFirestoreRepository(
                 if (observedSessionId != session.sessionId) {
                     observedSessionId = session.sessionId
                     listenToTelemetry(firestore, session.sessionId)
+                    listenToTrack(firestore, session.sessionId)
                 }
             }
     }
@@ -102,6 +108,7 @@ class CopilotFirestoreRepository(
         sessionListener?.remove()
         sessionListener = null
         clearTelemetryListener()
+        clearTrackListener()
     }
 
     private fun listenToTelemetry(
@@ -145,9 +152,47 @@ class CopilotFirestoreRepository(
             }
     }
 
+    private fun listenToTrack(
+        firestore: FirebaseFirestore,
+        sessionId: String,
+    ) {
+        clearTrackListener()
+        trackListener = firestore.collection(RACE_SESSIONS_COLLECTION)
+            .document(sessionId)
+            .collection(TRACK_COLLECTION)
+            .document(CURRENT_TRACK_DOCUMENT)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    _state.update {
+                        it.copy(
+                            connectionState = FirestoreConnectionState.Error,
+                            errorMessage = error.message,
+                        )
+                    }
+                    return@addSnapshotListener
+                }
+
+                _state.update {
+                    it.copy(
+                        track = if (snapshot != null && snapshot.exists()) {
+                            snapshot.toTrackData()
+                        } else {
+                            null
+                        },
+                        errorMessage = null,
+                    )
+                }
+            }
+    }
+
     private fun clearTelemetryListener() {
         telemetryListener?.remove()
         telemetryListener = null
+    }
+
+    private fun clearTrackListener() {
+        trackListener?.remove()
+        trackListener = null
     }
 
     private fun DocumentSnapshot.toRaceSessionSummary(): RaceSessionSummary {
@@ -183,6 +228,30 @@ class CopilotFirestoreRepository(
         )
     }
 
+    private fun DocumentSnapshot.toTrackData(): TrackData {
+        return TrackData(
+            trackName = getString(FIELD_TRACK_NAME),
+            totalDistanceM = getNumberField(FIELD_TOTAL_DISTANCE_M)?.toDouble(),
+            pointCount = getNumberField(FIELD_POINT_COUNT)?.toInt(),
+            points = getTrackPoints(),
+        )
+    }
+
+    private fun DocumentSnapshot.getTrackPoints(): List<TrackPoint> {
+        val rawPoints = get(FIELD_POINTS) as? List<*> ?: return emptyList()
+        return rawPoints.mapNotNull { rawPoint ->
+            val point = rawPoint as? Map<*, *> ?: return@mapNotNull null
+            val distanceM = point[FIELD_DISTANCE_M] as? Number ?: return@mapNotNull null
+            val lat = point[FIELD_LAT] as? Number ?: return@mapNotNull null
+            val lon = point[FIELD_LON] as? Number ?: return@mapNotNull null
+            TrackPoint(
+                distanceM = distanceM.toDouble(),
+                lat = lat.toDouble(),
+                lon = lon.toDouble(),
+            )
+        }
+    }
+
     private fun DocumentSnapshot.getNumberField(field: String): Number? {
         return get(field) as? Number
     }
@@ -191,6 +260,8 @@ class CopilotFirestoreRepository(
         private const val RACE_SESSIONS_COLLECTION = "raceSessions"
         private const val TELEMETRY_COLLECTION = "telemetry"
         private const val LATEST_TELEMETRY_DOCUMENT = "latest"
+        private const val TRACK_COLLECTION = "track"
+        private const val CURRENT_TRACK_DOCUMENT = "current"
 
         private const val FIELD_SESSION_ID = "sessionId"
         private const val FIELD_CREATED_AT_ISO = "createdAtIso"
@@ -199,6 +270,12 @@ class CopilotFirestoreRepository(
         private const val FIELD_RACE_STARTED = "raceStarted"
         private const val FIELD_TOTAL_LAPS = "totalLaps"
         private const val FIELD_TRACK_NAME = "trackName"
+        private const val FIELD_TOTAL_DISTANCE_M = "totalDistanceM"
+        private const val FIELD_POINT_COUNT = "pointCount"
+        private const val FIELD_POINTS = "points"
+        private const val FIELD_DISTANCE_M = "distanceM"
+        private const val FIELD_LAT = "lat"
+        private const val FIELD_LON = "lon"
         private const val FIELD_TIMESTAMP_ISO = "timestampIso"
         private const val FIELD_ELAPSED_SESSION_S = "elapsedSessionS"
         private const val FIELD_ELAPSED_LAP_S = "elapsedLapS"

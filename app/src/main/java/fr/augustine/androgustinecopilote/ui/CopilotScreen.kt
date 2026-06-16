@@ -1,5 +1,7 @@
 package fr.augustine.androgustinecopilote.ui
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,12 +27,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import fr.augustine.androgustinecopilote.data.TrackData
+import fr.augustine.androgustinecopilote.data.TrackPoint
+import fr.augustine.androgustinecopilote.data.positionAtDistance
 import fr.augustine.androgustinecopilote.ui.theme.AndroGustineCopiloteTheme
 
 @Composable
@@ -69,6 +78,12 @@ fun CopilotScreen(
                     sessionId = uiState.sessionId,
                     status = uiState.status,
                 )
+                CircuitMapCard(
+                    hasSession = uiState.hasSession,
+                    track = uiState.track,
+                    snappedDistanceM = uiState.snappedDistanceMRaw,
+                    ghostDistanceM = uiState.ghostDistanceMRaw,
+                )
                 PrimaryMetricsGrid(
                     lapProgress = uiState.lapProgress,
                     sessionChrono = uiState.sessionChrono,
@@ -82,6 +97,167 @@ fun CopilotScreen(
                     value = uiState.weatherLabel,
                 )
                 DebugSection(uiState = uiState)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CircuitMapCard(
+    hasSession: Boolean,
+    track: TrackData?,
+    snappedDistanceM: Double?,
+    ghostDistanceM: Double?,
+    modifier: Modifier = Modifier,
+) {
+    val trackPoints = track?.points.orEmpty()
+    val carPosition = positionAtDistance(
+        points = trackPoints,
+        distanceM = snappedDistanceM,
+        totalDistanceM = track?.totalDistanceM,
+    )
+    val ghostPosition = positionAtDistance(
+        points = trackPoints,
+        distanceM = ghostDistanceM,
+        totalDistanceM = track?.totalDistanceM,
+    )
+    val messages = buildList {
+        if (!hasSession) add("Circuit non disponible")
+        if (hasSession && track == null) add("Circuit non disponible")
+        if (track != null && trackPoints.isEmpty()) add("Circuit non disponible")
+        if (track != null && trackPoints.isNotEmpty() && snappedDistanceM == null) {
+            add("Position vehicule non disponible")
+        }
+        if (track != null && trackPoints.isNotEmpty() && ghostDistanceM == null) {
+            add("Ghost non disponible")
+        }
+    }
+    val circuitColor = MaterialTheme.colorScheme.primary
+    val carColor = MaterialTheme.colorScheme.error
+    val ghostColor = Color(0xFF1B7F3A)
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Carte circuit",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${trackPoints.size} pts",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedColor,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1.7f),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (trackPoints.isNotEmpty()) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val paddingPx = 24.dp.toPx()
+                        val availableWidth = size.width - (paddingPx * 2)
+                        val availableHeight = size.height - (paddingPx * 2)
+                        val minLat = trackPoints.minOf { it.lat }
+                        val maxLat = trackPoints.maxOf { it.lat }
+                        val minLon = trackPoints.minOf { it.lon }
+                        val maxLon = trackPoints.maxOf { it.lon }
+                        val latRange = (maxLat - minLat).takeIf { it > 0.0 } ?: 1.0
+                        val lonRange = (maxLon - minLon).takeIf { it > 0.0 } ?: 1.0
+                        val scale = minOf(
+                            availableWidth / lonRange.toFloat(),
+                            availableHeight / latRange.toFloat(),
+                        )
+                        val drawingWidth = lonRange.toFloat() * scale
+                        val drawingHeight = latRange.toFloat() * scale
+                        val offsetX = (size.width - drawingWidth) / 2f
+                        val offsetY = (size.height - drawingHeight) / 2f
+
+                        fun TrackPoint.project(): Offset {
+                            val x = offsetX + ((lon - minLon).toFloat() * scale)
+                            val y = offsetY + ((maxLat - lat).toFloat() * scale)
+                            return Offset(x, y)
+                        }
+
+                        val sortedPoints = trackPoints.sortedBy { it.distanceM }
+                        val path = Path().apply {
+                            val first = sortedPoints.first().project()
+                            moveTo(first.x, first.y)
+                            sortedPoints.drop(1).forEach { point ->
+                                val projected = point.project()
+                                lineTo(projected.x, projected.y)
+                            }
+                        }
+                        drawPath(
+                            path = path,
+                            color = circuitColor,
+                            style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round),
+                        )
+
+                        carPosition?.project()?.let { projected ->
+                            drawCircle(
+                                color = carColor,
+                                radius = 8.dp.toPx(),
+                                center = projected,
+                            )
+                        }
+                        ghostPosition?.project()?.let { projected ->
+                            drawCircle(
+                                color = ghostColor,
+                                radius = 9.dp.toPx(),
+                                center = projected,
+                                style = Stroke(width = 4.dp.toPx()),
+                            )
+                        }
+                    }
+                }
+                if (trackPoints.isEmpty()) {
+                    Text(
+                        text = messages.firstOrNull() ?: "Circuit non disponible",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = mutedColor,
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Text(
+                    text = "Voiture",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = carColor,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Ghost",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ghostColor,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            messages.filterNot { it == "Circuit non disponible" && trackPoints.isEmpty() }.forEach { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedColor,
+                )
             }
         }
     }
