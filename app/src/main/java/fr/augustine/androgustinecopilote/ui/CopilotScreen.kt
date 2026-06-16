@@ -176,31 +176,48 @@ private fun CircuitMapCard(
                         val maxLon = trackPoints.maxOf { it.lon }
                         val minLat = trackPoints.minOf { it.lat }
                         val maxLat = trackPoints.maxOf { it.lat }
-                        val trackWidth = (maxLon - minLon).takeIf { it > 0.0 } ?: 1.0
-                        val trackHeight = (maxLat - minLat).takeIf { it > 0.0 } ?: 1.0
-                        val availableWidth = (size.width - (paddingPx * 2)).coerceAtLeast(1f)
-                        val availableHeight = (size.height - (paddingPx * 2)).coerceAtLeast(1f)
-                        val scale = minOf(
-                            availableWidth / trackWidth.toFloat(),
-                            availableHeight / trackHeight.toFloat(),
-                        )
-                        val drawingWidth = trackWidth.toFloat() * scale
-                        val drawingHeight = trackHeight.toFloat() * scale
-                        val offsetX = paddingPx + ((availableWidth - drawingWidth) / 2f)
-                        val offsetY = paddingPx + ((availableHeight - drawingHeight) / 2f)
+                        val refLon = (minLon + maxLon) / 2.0
+                        val refLat = (minLat + maxLat) / 2.0
+                        val meanLatRad = Math.toRadians(refLat)
 
-                        fun TrackPoint.project(): Offset {
-                            val x = offsetX + ((lon - minLon).toFloat() * scale)
-                            val y = offsetY + ((maxLat - lat).toFloat() * scale)
+                        fun TrackPoint.toLocalMeters(): Offset {
+                            val x = ((lon - refLon) * LON_DEGREE_METERS * kotlin.math.cos(meanLatRad)).toFloat()
+                            val y = ((lat - refLat) * LAT_DEGREE_METERS).toFloat()
                             return Offset(x, y)
                         }
 
-                        val sortedPoints = trackPoints.sortedBy { it.distanceM }
+                        val localTrackPoints = trackPoints.map { it to it.toLocalMeters() }
+                        val localCarPosition = carPosition?.toLocalMeters()
+                        val localGhostPosition = ghostPosition?.toLocalMeters()
+                        val minX = localTrackPoints.minOf { it.second.x }
+                        val maxX = localTrackPoints.maxOf { it.second.x }
+                        val minY = localTrackPoints.minOf { it.second.y }
+                        val maxY = localTrackPoints.maxOf { it.second.y }
+                        val trackWidthM = (maxX - minX).takeIf { it > 0f } ?: 1f
+                        val trackHeightM = (maxY - minY).takeIf { it > 0f } ?: 1f
+                        val availableWidth = (size.width - (paddingPx * 2)).coerceAtLeast(1f)
+                        val availableHeight = (size.height - (paddingPx * 2)).coerceAtLeast(1f)
+                        val scale = minOf(
+                            availableWidth / trackWidthM,
+                            availableHeight / trackHeightM,
+                        )
+                        val drawingWidth = trackWidthM * scale
+                        val drawingHeight = trackHeightM * scale
+                        val offsetX = paddingPx + ((availableWidth - drawingWidth) / 2f)
+                        val offsetY = paddingPx + ((availableHeight - drawingHeight) / 2f)
+
+                        fun Offset.project(): Offset {
+                            val x = offsetX + ((this.x - minX) * scale)
+                            val y = offsetY + ((maxY - this.y) * scale)
+                            return Offset(x, y)
+                        }
+
+                        val sortedPoints = localTrackPoints.sortedBy { it.first.distanceM }
                         val path = Path().apply {
-                            val first = sortedPoints.first().project()
+                            val first = sortedPoints.first().second.project()
                             moveTo(first.x, first.y)
                             sortedPoints.drop(1).forEach { point ->
-                                val projected = point.project()
+                                val projected = point.second.project()
                                 lineTo(projected.x, projected.y)
                             }
                         }
@@ -210,14 +227,14 @@ private fun CircuitMapCard(
                             style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round),
                         )
 
-                        carPosition?.project()?.let { projected ->
+                        localCarPosition?.project()?.let { projected ->
                             drawCircle(
                                 color = carColor,
                                 radius = 8.dp.toPx(),
                                 center = projected,
                             )
                         }
-                        ghostPosition?.project()?.let { projected ->
+                        localGhostPosition?.project()?.let { projected ->
                             drawCircle(
                                 color = ghostColor,
                                 radius = 9.dp.toPx(),
@@ -561,6 +578,9 @@ private fun deltaGhostColor(value: String): Color {
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
+
+private const val LON_DEGREE_METERS = 111_320.0
+private const val LAT_DEGREE_METERS = 110_540.0
 
 @Preview(showBackground = true)
 @Composable
