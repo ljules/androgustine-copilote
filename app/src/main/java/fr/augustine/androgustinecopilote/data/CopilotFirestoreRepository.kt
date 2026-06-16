@@ -157,6 +157,8 @@ class CopilotFirestoreRepository(
             appRole = getString(FIELD_APP_ROLE),
             status = getString(FIELD_STATUS),
             raceStarted = getBoolean(FIELD_RACE_STARTED),
+            totalLaps = getNumberField(FIELD_TOTAL_LAPS)?.toLong(),
+            trackName = getString(FIELD_TRACK_NAME),
         )
     }
 
@@ -195,6 +197,8 @@ class CopilotFirestoreRepository(
         private const val FIELD_APP_ROLE = "appRole"
         private const val FIELD_STATUS = "status"
         private const val FIELD_RACE_STARTED = "raceStarted"
+        private const val FIELD_TOTAL_LAPS = "totalLaps"
+        private const val FIELD_TRACK_NAME = "trackName"
         private const val FIELD_TIMESTAMP_ISO = "timestampIso"
         private const val FIELD_ELAPSED_SESSION_S = "elapsedSessionS"
         private const val FIELD_ELAPSED_LAP_S = "elapsedLapS"

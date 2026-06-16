@@ -71,10 +71,26 @@ fun CopilotScreen(
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
-                TelemetryRow("sessionId", uiState.sessionId)
-                TelemetryRow("status", uiState.status)
-                TelemetryRow("raceStarted", uiState.raceStarted)
+                MainInfoRow("Circuit", uiState.trackName)
+                MainInfoRow("Session", uiState.sessionId)
+                Spacer(modifier = Modifier.height(6.dp))
+                MainInfoRow("Etat", uiState.status)
+                MainInfoRow("Tour", uiState.lapProgress)
+                MainInfoRow("Chrono", uiState.sessionChrono)
+                MainInfoRow("Temps tour", uiState.lapChrono)
+                Spacer(modifier = Modifier.height(6.dp))
+                MainInfoRow("Vitesse", uiState.speedLabel)
+                MainInfoRow("FC", uiState.heartRateLabel)
+                MainInfoRow("Delta Ghost", uiState.deltaGhostLabel)
+                MainInfoRow("Meteo", uiState.weatherLabel)
+                Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider()
+                Text(
+                    text = "Debug brut",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                TelemetryRow("raceStarted", uiState.raceStarted)
                 TelemetryRow("currentLap", uiState.currentLap)
                 TelemetryRow("elapsedSessionS", uiState.elapsedSessionS)
                 TelemetryRow("elapsedLapS", uiState.elapsedLapS)
@@ -92,6 +108,32 @@ fun CopilotScreen(
                 TelemetryRow("timestampIso", uiState.timestampIso)
             }
         }
+    }
+}
+
+@Composable
+private fun MainInfoRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = "$label :",
+            modifier = Modifier.weight(0.8f),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            modifier = Modifier.weight(1.2f),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
@@ -128,9 +170,17 @@ private fun CopilotScreenPreview() {
         CopilotScreen(
             uiState = CopilotUiState(
                 firestoreStatus = "Connecte - telemetry/latest actif",
+                trackName = "Silesia Ring",
                 sessionId = "demo-session",
-                status = "running",
+                status = "RUNNING",
                 raceStarted = "true",
+                lapProgress = "2 / 11",
+                sessionChrono = "04:21",
+                lapChrono = "00:34",
+                speedLabel = "5,4 km/h",
+                heartRateLabel = "99 bpm",
+                deltaGhostLabel = "-225 m",
+                weatherLabel = "28,4 \u00B0C | vent 16,6 km/h | pluie 0 %",
                 currentLap = "3",
                 gpsSpeedKmh = "31.4",
                 timestampIso = "2026-06-16T14:00:00Z",

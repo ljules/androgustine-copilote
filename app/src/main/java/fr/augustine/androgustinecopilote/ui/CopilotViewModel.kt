@@ -10,16 +10,25 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import java.util.Locale
 
 data class CopilotUiState(
     val firestoreStatus: String = "Initialisation",
+    val trackName: String = "-",
     val sessionId: String = "-",
     val status: String = "-",
     val raceStarted: String = "-",
+    val lapProgress: String = "- / ?",
+    val sessionChrono: String = "--:--",
+    val lapChrono: String = "--:--",
+    val speedLabel: String = "- km/h",
+    val heartRateLabel: String = "- bpm",
+    val deltaGhostLabel: String = "- m",
+    val weatherLabel: String = "-",
+    val activeStrategy: String = "-",
     val currentLap: String = "-",
     val elapsedSessionS: String = "-",
     val elapsedLapS: String = "-",
-    val activeStrategy: String = "-",
     val gpsSpeedKmh: String = "-",
     val gpsLat: String = "-",
     val gpsLon: String = "-",
@@ -62,9 +71,24 @@ class CopilotViewModel(
 
         return CopilotUiState(
             firestoreStatus = state.connectionState.toDisplayText(),
+            trackName = session?.trackName.orDash(),
             sessionId = session?.sessionId.orDash(),
             status = session?.status.orDash(),
             raceStarted = (telemetry?.raceStarted ?: session?.raceStarted).format(),
+            lapProgress = formatLapProgress(
+                currentLap = telemetry?.currentLap,
+                totalLaps = session?.totalLaps,
+            ),
+            sessionChrono = telemetry?.elapsedSessionS.formatChrono(),
+            lapChrono = telemetry?.elapsedLapS.formatChrono(),
+            speedLabel = "${telemetry?.gpsSpeedKmh.formatDecimal(1)} km/h",
+            heartRateLabel = "${telemetry?.heartRateBpm.format()} bpm",
+            deltaGhostLabel = "${telemetry?.deltaDistanceM.formatMeters()} m",
+            weatherLabel = formatWeather(
+                temperatureC = telemetry?.weatherTemperatureC,
+                windKmh = telemetry?.weatherWindKmh,
+                rainProbability = telemetry?.weatherRainProbability,
+            ),
             currentLap = telemetry?.currentLap.format(),
             elapsedSessionS = telemetry?.elapsedSessionS.format(1),
             elapsedLapS = telemetry?.elapsedLapS.format(1),
@@ -107,5 +131,44 @@ private fun Boolean?.format(): String = when (this) {
 private fun Long?.format(): String = this?.toString() ?: "-"
 
 private fun Double?.format(decimals: Int): String {
-    return this?.let { "%.${decimals}f".format(it) } ?: "-"
+    return this?.let { String.format(Locale.FRANCE, "%.${decimals}f", it) } ?: "-"
+}
+
+private fun Double?.formatDecimal(decimals: Int): String {
+    return this.format(decimals)
+}
+
+private fun Double?.formatChrono(): String {
+    if (this == null) return "--:--"
+    val totalSeconds = toLong().coerceAtLeast(0L)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.FRANCE, "%02d:%02d", minutes, seconds)
+}
+
+private fun Double?.formatMeters(): String {
+    return this?.let { String.format(Locale.FRANCE, "%.0f", it) } ?: "-"
+}
+
+private fun formatLapProgress(
+    currentLap: Long?,
+    totalLaps: Long?,
+): String {
+    val current = currentLap?.toString() ?: "-"
+    val total = totalLaps?.toString() ?: "?"
+    return "$current / $total"
+}
+
+private fun formatWeather(
+    temperatureC: Double?,
+    windKmh: Double?,
+    rainProbability: Double?,
+): String {
+    return "${temperatureC.formatDecimal(1)} \u00B0C | vent ${windKmh.formatDecimal(1)} km/h | pluie ${rainProbability.formatRainPercent()}"
+}
+
+private fun Double?.formatRainPercent(): String {
+    if (this == null) return "-"
+    val percent = if (this in 0.0..1.0) this * 100 else this
+    return "${String.format(Locale.FRANCE, "%.0f", percent)} %"
 }
