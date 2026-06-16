@@ -172,22 +172,22 @@ private fun CircuitMapCard(
                 if (trackPoints.isNotEmpty()) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val paddingPx = 24.dp.toPx()
-                        val availableWidth = size.width - (paddingPx * 2)
-                        val availableHeight = size.height - (paddingPx * 2)
-                        val minLat = trackPoints.minOf { it.lat }
-                        val maxLat = trackPoints.maxOf { it.lat }
                         val minLon = trackPoints.minOf { it.lon }
                         val maxLon = trackPoints.maxOf { it.lon }
-                        val latRange = (maxLat - minLat).takeIf { it > 0.0 } ?: 1.0
-                        val lonRange = (maxLon - minLon).takeIf { it > 0.0 } ?: 1.0
+                        val minLat = trackPoints.minOf { it.lat }
+                        val maxLat = trackPoints.maxOf { it.lat }
+                        val trackWidth = (maxLon - minLon).takeIf { it > 0.0 } ?: 1.0
+                        val trackHeight = (maxLat - minLat).takeIf { it > 0.0 } ?: 1.0
+                        val availableWidth = (size.width - (paddingPx * 2)).coerceAtLeast(1f)
+                        val availableHeight = (size.height - (paddingPx * 2)).coerceAtLeast(1f)
                         val scale = minOf(
-                            availableWidth / lonRange.toFloat(),
-                            availableHeight / latRange.toFloat(),
+                            availableWidth / trackWidth.toFloat(),
+                            availableHeight / trackHeight.toFloat(),
                         )
-                        val drawingWidth = lonRange.toFloat() * scale
-                        val drawingHeight = latRange.toFloat() * scale
-                        val offsetX = (size.width - drawingWidth) / 2f
-                        val offsetY = (size.height - drawingHeight) / 2f
+                        val drawingWidth = trackWidth.toFloat() * scale
+                        val drawingHeight = trackHeight.toFloat() * scale
+                        val offsetX = paddingPx + ((availableWidth - drawingWidth) / 2f)
+                        val offsetY = paddingPx + ((availableHeight - drawingHeight) / 2f)
 
                         fun TrackPoint.project(): Offset {
                             val x = offsetX + ((lon - minLon).toFloat() * scale)
