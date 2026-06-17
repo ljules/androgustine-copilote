@@ -3,14 +3,20 @@ package fr.augustine.androgustinecopilote.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import fr.augustine.androgustinecopilote.data.CopilotInstructions
 import fr.augustine.androgustinecopilote.data.CopilotFirestoreRepository
 import fr.augustine.androgustinecopilote.data.CopilotFirestoreState
 import fr.augustine.androgustinecopilote.data.FirestoreConnectionState
 import fr.augustine.androgustinecopilote.data.TrackData
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.time.Instant
 import java.util.Locale
 
 data class CopilotUiState(
@@ -46,15 +52,33 @@ data class CopilotUiState(
     val weatherRainProbability: String = "-",
     val timestampIso: String = "-",
     val errorMessage: String? = null,
+    val selectedPaceInstruction: String = CopilotInstructions.PACE_MAINTAIN,
+    val selectedRaceStatusInstruction: String = CopilotInstructions.STATUS_RACE,
+    val pitStopRequest: Boolean = false,
+    val lastInstructionSent: String = "-",
+    val lastInstructionSentAt: String = "-",
+    val instructionErrorMessage: String? = null,
+    val isSendingInstruction: Boolean = false,
+)
+
+private data class InstructionSendUiState(
+    val selectedPaceInstruction: String = CopilotInstructions.PACE_MAINTAIN,
+    val selectedRaceStatusInstruction: String = CopilotInstructions.STATUS_RACE,
+    val pitStopRequest: Boolean = false,
+    val lastInstructionSent: String = "-",
+    val lastInstructionSentAt: String = "-",
+    val errorMessage: String? = null,
+    val isSending: Boolean = false,
 )
 
 class CopilotViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val repository = CopilotFirestoreRepository(application)
+    private val instructionState = MutableStateFlow(InstructionSendUiState())
 
     val uiState: StateFlow<CopilotUiState> = repository.state
-        .map(::toUiState)
+        .combine(instructionState, ::toUiState)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -70,7 +94,82 @@ class CopilotViewModel(
         super.onCleared()
     }
 
-    private fun toUiState(state: CopilotFirestoreState): CopilotUiState {
+    fun sendPaceInstruction(paceInstruction: String) {
+        val current = instructionState.value
+        sendInstructions(
+            paceInstruction = paceInstruction,
+            raceStatusInstruction = current.selectedRaceStatusInstruction,
+            pitStopRequest = current.pitStopRequest,
+        )
+    }
+
+    fun sendRaceStatusInstruction(raceStatusInstruction: String) {
+        val current = instructionState.value
+        sendInstructions(
+            paceInstruction = current.selectedPaceInstruction,
+            raceStatusInstruction = raceStatusInstruction,
+            pitStopRequest = current.pitStopRequest,
+        )
+    }
+
+    fun sendPitStopRequest(pitStopRequest: Boolean) {
+        val current = instructionState.value
+        sendInstructions(
+            paceInstruction = current.selectedPaceInstruction,
+            raceStatusInstruction = current.selectedRaceStatusInstruction,
+            pitStopRequest = pitStopRequest,
+        )
+    }
+
+    private fun sendInstructions(
+        paceInstruction: String,
+        raceStatusInstruction: String,
+        pitStopRequest: Boolean,
+    ) {
+        viewModelScope.launch {
+            val updatedAtIso = Instant.now().toString()
+            instructionState.update {
+                it.copy(
+                    selectedPaceInstruction = paceInstruction,
+                    selectedRaceStatusInstruction = raceStatusInstruction,
+                    pitStopRequest = pitStopRequest,
+                    errorMessage = null,
+                    isSending = true,
+                )
+            }
+
+            val result = repository.sendInstructions(
+                pilotPaceInstruction = paceInstruction,
+                raceStatusInstruction = raceStatusInstruction,
+                pitStopRequest = pitStopRequest,
+                updatedAtIso = updatedAtIso,
+            )
+
+            instructionState.update {
+                result.fold(
+                    onSuccess = { instructions ->
+                        it.copy(
+                            lastInstructionSent = instructions.toDisplayText(),
+                            lastInstructionSentAt = instructions.updatedAtIso,
+                            errorMessage = null,
+                            isSending = false,
+                        )
+                    },
+                    onFailure = { exception ->
+                        it.copy(
+                            errorMessage = exception.message ?: "Erreur d'envoi de consigne.",
+                            isSending = false,
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    private fun toUiState(
+        state: CopilotFirestoreState,
+        instructionsState: InstructionSendUiState,
+    ): CopilotUiState {
         val session = state.session
         val telemetry = state.telemetry
 
@@ -114,6 +213,13 @@ class CopilotViewModel(
             weatherRainProbability = telemetry?.weatherRainProbability.format(2),
             timestampIso = telemetry?.timestampIso.orDash(),
             errorMessage = state.errorMessage,
+            selectedPaceInstruction = instructionsState.selectedPaceInstruction,
+            selectedRaceStatusInstruction = instructionsState.selectedRaceStatusInstruction,
+            pitStopRequest = instructionsState.pitStopRequest,
+            lastInstructionSent = instructionsState.lastInstructionSent,
+            lastInstructionSentAt = instructionsState.lastInstructionSentAt,
+            instructionErrorMessage = instructionsState.errorMessage,
+            isSendingInstruction = instructionsState.isSending,
         )
     }
 
@@ -127,6 +233,10 @@ class CopilotViewModel(
             FirestoreConnectionState.FirebaseNotInitialized -> "Firebase non initialise"
         }
     }
+}
+
+private fun CopilotInstructions.toDisplayText(): String {
+    return "$pilotPaceInstruction / $raceStatusInstruction / stand=$pitStopRequest"
 }
 
 private fun String?.orDash(): String = this ?: "-"

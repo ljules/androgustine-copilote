@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 enum class FirestoreConnectionState {
     Initializing,
@@ -109,6 +111,45 @@ class CopilotFirestoreRepository(
         sessionListener = null
         clearTelemetryListener()
         clearTrackListener()
+    }
+
+    suspend fun sendInstructions(
+        pilotPaceInstruction: String,
+        raceStatusInstruction: String,
+        pitStopRequest: Boolean,
+        updatedAtIso: String,
+    ): Result<CopilotInstructions> {
+        val sessionId = _state.value.session?.sessionId
+            ?: return Result.failure(IllegalStateException("Aucune session courante detectee."))
+        val firestore = try {
+            FirebaseFirestore.getInstance()
+        } catch (exception: IllegalStateException) {
+            return Result.failure(exception)
+        }
+        val instructions = CopilotInstructions(
+            pilotPaceInstruction = pilotPaceInstruction,
+            raceStatusInstruction = raceStatusInstruction,
+            pitStopRequest = pitStopRequest,
+            updatedAtIso = updatedAtIso,
+        )
+
+        return suspendCancellableCoroutine { continuation ->
+            firestore.collection(RACE_SESSIONS_COLLECTION)
+                .document(sessionId)
+                .collection(INSTRUCTIONS_COLLECTION)
+                .document(CURRENT_INSTRUCTIONS_DOCUMENT)
+                .set(instructions.toFirestoreMap())
+                .addOnSuccessListener {
+                    if (continuation.isActive) {
+                        continuation.resume(Result.success(instructions))
+                    }
+                }
+                .addOnFailureListener { exception ->
+                    if (continuation.isActive) {
+                        continuation.resume(Result.failure(exception))
+                    }
+                }
+        }
     }
 
     private fun listenToTelemetry(
@@ -262,6 +303,8 @@ class CopilotFirestoreRepository(
         private const val LATEST_TELEMETRY_DOCUMENT = "latest"
         private const val TRACK_COLLECTION = "track"
         private const val CURRENT_TRACK_DOCUMENT = "current"
+        private const val INSTRUCTIONS_COLLECTION = "instructions"
+        private const val CURRENT_INSTRUCTIONS_DOCUMENT = "current"
 
         private const val FIELD_SESSION_ID = "sessionId"
         private const val FIELD_CREATED_AT_ISO = "createdAtIso"

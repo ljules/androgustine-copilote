@@ -16,6 +16,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,6 +39,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import fr.augustine.androgustinecopilote.data.CopilotInstructions
 import fr.augustine.androgustinecopilote.data.TrackData
 import fr.augustine.androgustinecopilote.data.TrackPoint
 import fr.augustine.androgustinecopilote.data.positionAtDistance
@@ -47,13 +50,21 @@ fun CopilotRoute(
     viewModel: CopilotViewModel = viewModel(),
 ) {
     val uiState = viewModel.uiState.collectAsStateWithLifecycle()
-    CopilotScreen(uiState = uiState.value)
+    CopilotScreen(
+        uiState = uiState.value,
+        onPaceInstructionClick = viewModel::sendPaceInstruction,
+        onRaceStatusInstructionClick = viewModel::sendRaceStatusInstruction,
+        onPitStopRequestClick = viewModel::sendPitStopRequest,
+    )
 }
 
 @Composable
 fun CopilotScreen(
     uiState: CopilotUiState,
     modifier: Modifier = Modifier,
+    onPaceInstructionClick: (String) -> Unit = {},
+    onRaceStatusInstructionClick: (String) -> Unit = {},
+    onPitStopRequestClick: (Boolean) -> Unit = {},
 ) {
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Surface(
@@ -96,8 +107,165 @@ fun CopilotScreen(
                     title = "Meteo",
                     value = uiState.weatherLabel,
                 )
+                InstructionsCard(
+                    uiState = uiState,
+                    onPaceInstructionClick = onPaceInstructionClick,
+                    onRaceStatusInstructionClick = onRaceStatusInstructionClick,
+                    onPitStopRequestClick = onPitStopRequestClick,
+                )
                 DebugSection(uiState = uiState)
             }
+        }
+    }
+}
+
+@Composable
+private fun InstructionsCard(
+    uiState: CopilotUiState,
+    onPaceInstructionClick: (String) -> Unit,
+    onRaceStatusInstructionClick: (String) -> Unit,
+    onPitStopRequestClick: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Consignes pilote",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            InstructionButtonGroup(
+                title = "Cadence",
+                options = listOf(
+                    InstructionOption("Accelerer", CopilotInstructions.PACE_ACCELERATE),
+                    InstructionOption("Maintenir", CopilotInstructions.PACE_MAINTAIN),
+                    InstructionOption("Ralentir", CopilotInstructions.PACE_SLOW_DOWN),
+                ),
+                selectedValue = uiState.selectedPaceInstruction,
+                enabled = !uiState.isSendingInstruction,
+                onOptionClick = onPaceInstructionClick,
+            )
+            InstructionButtonGroup(
+                title = "Etat course",
+                options = listOf(
+                    InstructionOption("Course", CopilotInstructions.STATUS_RACE),
+                    InstructionOption("Ne pas doubler", CopilotInstructions.STATUS_NO_OVERTAKING),
+                    InstructionOption("Stop", CopilotInstructions.STATUS_STOP),
+                ),
+                selectedValue = uiState.selectedRaceStatusInstruction,
+                enabled = !uiState.isSendingInstruction,
+                onOptionClick = onRaceStatusInstructionClick,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Stand",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SelectableInstructionButton(
+                        label = "Demande arret stand",
+                        selected = uiState.pitStopRequest,
+                        enabled = !uiState.isSendingInstruction,
+                        onClick = { onPitStopRequestClick(true) },
+                    )
+                    SelectableInstructionButton(
+                        label = "Annuler",
+                        selected = !uiState.pitStopRequest,
+                        enabled = !uiState.isSendingInstruction,
+                        onClick = { onPitStopRequestClick(false) },
+                    )
+                }
+            }
+            HorizontalDivider()
+            TelemetryRow("Derniere consigne", uiState.lastInstructionSent)
+            TelemetryRow("Heure d'envoi", uiState.lastInstructionSentAt)
+            if (uiState.isSendingInstruction) {
+                Text(
+                    text = "Envoi en cours...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            uiState.instructionErrorMessage?.let { errorMessage ->
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+private data class InstructionOption(
+    val label: String,
+    val value: String,
+)
+
+@Composable
+private fun InstructionButtonGroup(
+    title: String,
+    options: List<InstructionOption>,
+    selectedValue: String,
+    enabled: Boolean,
+    onOptionClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { option ->
+                SelectableInstructionButton(
+                    label = option.label,
+                    selected = option.value == selectedValue,
+                    enabled = enabled,
+                    onClick = { onOptionClick(option.value) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectableInstructionButton(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (selected) {
+        Button(
+            modifier = modifier,
+            enabled = enabled,
+            onClick = onClick,
+        ) {
+            Text(text = label)
+        }
+    } else {
+        OutlinedButton(
+            modifier = modifier,
+            enabled = enabled,
+            onClick = onClick,
+        ) {
+            Text(text = label)
         }
     }
 }
