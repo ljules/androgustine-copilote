@@ -307,7 +307,7 @@ private fun CircuitMapCard(
             add("Ghost non disponible")
         }
     }
-    val circuitColor = MaterialTheme.colorScheme.primary
+    val circuitColor = MaterialTheme.colorScheme.onSurfaceVariant
     val carColor = MaterialTheme.colorScheme.error
     val ghostColor = Color(0xFF1B7F3A)
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -405,7 +405,7 @@ private fun CircuitMapCard(
                         drawPath(
                             path = path,
                             color = circuitColor,
-                            style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round),
+                            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round),
                         )
 
                         strategySegments.forEachIndexed { index, segment ->
@@ -429,7 +429,7 @@ private fun CircuitMapCard(
                                 drawPath(
                                     path = segmentPath,
                                     color = segmentColor,
-                                    style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round),
+                                    style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round),
                                 )
                             }
                         }
@@ -482,6 +482,11 @@ private fun CircuitMapCard(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+            Text(
+                text = "Segments strategie : ${strategySegments.size}",
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedColor,
+            )
             messages.filterNot { it == "Circuit non disponible" && trackPoints.isEmpty() }.forEach { message ->
                 Text(
                     text = message,
@@ -795,8 +800,9 @@ private fun deltaGhostColor(value: String): Color {
 private fun StrategyData?.segmentsForLap(currentLap: Long?): List<StrategySegment> {
     return when {
         this == null -> emptyList()
-        currentLap == 1L -> startSegments
-        currentLap != null && currentLap >= 2L -> raceSegments
+        currentLap == null -> startSegments
+        currentLap <= 1L -> startSegments
+        currentLap >= 2L -> raceSegments
         else -> emptyList()
     }
 }
