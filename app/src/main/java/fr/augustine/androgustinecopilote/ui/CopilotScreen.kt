@@ -119,8 +119,11 @@ fun CopilotScreen(
                     MapMode.OpenStreetMap -> OpenStreetMapCard(
                         hasSession = uiState.hasSession,
                         track = uiState.track,
+                        strategy = uiState.strategy,
+                        currentLap = uiState.currentLapRaw,
                         gpsLat = uiState.gpsLatRaw,
                         gpsLon = uiState.gpsLonRaw,
+                        snappedDistanceM = uiState.snappedDistanceMRaw,
                         ghostDistanceM = uiState.ghostDistanceMRaw,
                     )
                 }
@@ -335,16 +338,25 @@ private fun SelectableInstructionButton(
 private fun OpenStreetMapCard(
     hasSession: Boolean,
     track: TrackData?,
+    strategy: StrategyData?,
+    currentLap: Long?,
     gpsLat: Double?,
     gpsLon: Double?,
+    snappedDistanceM: Double?,
     ghostDistanceM: Double?,
     modifier: Modifier = Modifier,
 ) {
     val trackPoints = track?.points.orEmpty()
+    val strategySegments = strategy.segmentsForLap(currentLap)
+    val snappedTrackPoint = positionAtDistance(
+        points = trackPoints,
+        distanceM = snappedDistanceM,
+        totalDistanceM = track?.totalDistanceM,
+    )
     val carPosition = if (gpsLat != null && gpsLon != null) {
         GeoPoint(gpsLat, gpsLon)
     } else {
-        null
+        snappedTrackPoint?.let { GeoPoint(it.lat, it.lon) }
     }
     val ghostTrackPoint = positionAtDistance(
         points = trackPoints,
@@ -357,10 +369,16 @@ private fun OpenStreetMapCard(
         if (trackPoints.isNotEmpty() && carPosition == null) add("Position vehicule non disponible")
         if (trackPoints.isNotEmpty() && ghostPosition == null) add("Ghost non disponible")
     }
-    val trackColor = MaterialTheme.colorScheme.primary.toArgb()
+    val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val carColor = MaterialTheme.colorScheme.error.toArgb()
     val ghostColor = Color(0xFF1B7F3A).toArgb()
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val segmentFallbackColors = listOf(
+        Color.White,
+        Color(0xFFFFD54F),
+        Color(0xFF42A5F5),
+        Color(0xFF66BB6A),
+    )
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -427,6 +445,26 @@ private fun OpenStreetMapCard(
                         }
                         mapView.overlays.add(circuitLine)
 
+                        strategySegments.forEachIndexed { index, segment ->
+                            val segmentColor = segment.toColor(segmentFallbackColors[index % segmentFallbackColors.size])
+                            segment.distanceRanges(track?.totalDistanceM).forEach { range ->
+                                val points = buildSegmentGeoPoints(
+                                    startDistanceM = range.start,
+                                    endDistanceM = range.endInclusive,
+                                    points = trackPoints,
+                                    totalDistanceM = track?.totalDistanceM,
+                                )
+                                if (points.size >= 2) {
+                                    val strategyLine = Polyline().apply {
+                                        setPoints(points)
+                                        outlinePaint.color = segmentColor.toArgb()
+                                        outlinePaint.strokeWidth = OSM_SEGMENT_STROKE_WIDTH
+                                    }
+                                    mapView.overlays.add(strategyLine)
+                                }
+                            }
+                        }
+
                         carPosition?.let { position ->
                             mapView.overlays.add(
                                 Marker(mapView).apply {
@@ -449,17 +487,16 @@ private fun OpenStreetMapCard(
                             )
                         }
 
-                        val boundsPoints = circuitGeoPoints + listOfNotNull(carPosition, ghostPosition)
-                        if (boundsPoints.isNotEmpty()) {
+                        if (circuitGeoPoints.isNotEmpty()) {
                             mapView.post {
-                                if (boundsPoints.size == 1) {
-                                    mapView.controller.setCenter(boundsPoints.first())
+                                if (circuitGeoPoints.size == 1) {
+                                    mapView.controller.setCenter(circuitGeoPoints.first())
                                     mapView.controller.setZoom(DEFAULT_OSM_ZOOM)
                                 } else {
-                                    val north = boundsPoints.maxOf { it.latitude }
-                                    val south = boundsPoints.minOf { it.latitude }
-                                    val east = boundsPoints.maxOf { it.longitude }
-                                    val west = boundsPoints.minOf { it.longitude }
+                                    val north = circuitGeoPoints.maxOf { it.latitude }
+                                    val south = circuitGeoPoints.minOf { it.latitude }
+                                    val east = circuitGeoPoints.maxOf { it.longitude }
+                                    val west = circuitGeoPoints.minOf { it.longitude }
                                     mapView.zoomToBoundingBox(
                                         BoundingBox(north, east, south, west),
                                         false,
@@ -495,6 +532,11 @@ private fun OpenStreetMapCard(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+            Text(
+                text = "Segments strategie : ${strategySegments.size}",
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedColor,
+            )
             messages.filterNot { it == "Circuit non disponible" && trackPoints.isEmpty() }.forEach { message ->
                 Text(
                     text = message,
@@ -1086,6 +1128,40 @@ private fun buildSegmentPath(
     return path
 }
 
+private fun buildSegmentGeoPoints(
+    startDistanceM: Double,
+    endDistanceM: Double,
+    points: List<TrackPoint>,
+    totalDistanceM: Double?,
+): List<GeoPoint> {
+    if (points.isEmpty()) return emptyList()
+
+    val start = startDistanceM.coerceAtLeast(0.0)
+    val end = endDistanceM.coerceAtLeast(start)
+    val sortedPoints = points.sortedBy { it.distanceM }
+    val segmentPoints = buildList {
+        positionAtDistance(
+            points = sortedPoints,
+            distanceM = start,
+            totalDistanceM = totalDistanceM,
+        )?.let(::add)
+
+        sortedPoints
+            .filter { it.distanceM > start && it.distanceM < end }
+            .forEach(::add)
+
+        positionAtDistance(
+            points = sortedPoints,
+            distanceM = end,
+            totalDistanceM = totalDistanceM,
+        )?.let(::add)
+    }
+
+    return segmentPoints
+        .distinctBy { "${it.lat}:${it.lon}" }
+        .map { GeoPoint(it.lat, it.lon) }
+}
+
 private fun StrategySegment.toColor(fallbackColor: Color): Color {
     val key = (colorKey ?: label).orEmpty().uppercase()
     return when {
@@ -1102,7 +1178,8 @@ private const val MIN_SEGMENT_SAMPLES = 2
 private const val MAX_SEGMENT_SAMPLES = 96
 private const val DEFAULT_OSM_ZOOM = 17.0
 private const val OSM_BOUNDS_PADDING_PX = 64
-private const val OSM_TRACK_STROKE_WIDTH = 8f
+private const val OSM_TRACK_STROKE_WIDTH = 6f
+private const val OSM_SEGMENT_STROKE_WIDTH = 12f
 private const val LON_DEGREE_METERS = 111_320.0
 private const val LAT_DEGREE_METERS = 110_540.0
 
