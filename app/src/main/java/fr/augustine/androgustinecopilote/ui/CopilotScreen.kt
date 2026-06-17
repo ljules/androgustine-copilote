@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import fr.augustine.androgustinecopilote.data.CopilotInstructions
+import fr.augustine.androgustinecopilote.data.StrategyData
+import fr.augustine.androgustinecopilote.data.StrategySegment
 import fr.augustine.androgustinecopilote.data.TrackData
 import fr.augustine.androgustinecopilote.data.TrackPoint
 import fr.augustine.androgustinecopilote.data.positionAtDistance
@@ -92,6 +94,8 @@ fun CopilotScreen(
                 CircuitMapCard(
                     hasSession = uiState.hasSession,
                     track = uiState.track,
+                    strategy = uiState.strategy,
+                    currentLap = uiState.currentLapRaw,
                     snappedDistanceM = uiState.snappedDistanceMRaw,
                     ghostDistanceM = uiState.ghostDistanceMRaw,
                 )
@@ -274,11 +278,14 @@ private fun SelectableInstructionButton(
 private fun CircuitMapCard(
     hasSession: Boolean,
     track: TrackData?,
+    strategy: StrategyData?,
+    currentLap: Long?,
     snappedDistanceM: Double?,
     ghostDistanceM: Double?,
     modifier: Modifier = Modifier,
 ) {
     val trackPoints = track?.points.orEmpty()
+    val strategySegments = strategy.segmentsForLap(currentLap)
     val carPosition = positionAtDistance(
         points = trackPoints,
         distanceM = snappedDistanceM,
@@ -304,6 +311,12 @@ private fun CircuitMapCard(
     val carColor = MaterialTheme.colorScheme.error
     val ghostColor = Color(0xFF1B7F3A)
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val segmentFallbackColors = listOf(
+        Color.White,
+        Color(0xFFFFD54F),
+        Color(0xFF42A5F5),
+        Color(0xFF66BB6A),
+    )
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -395,6 +408,32 @@ private fun CircuitMapCard(
                             style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round),
                         )
 
+                        strategySegments.forEachIndexed { index, segment ->
+                            val ranges = segment.distanceRanges(track?.totalDistanceM)
+                            ranges.forEach { range ->
+                                val segmentPath = buildSegmentPath(
+                                    startDistanceM = range.start,
+                                    endDistanceM = range.endInclusive,
+                                    points = trackPoints,
+                                    totalDistanceM = track?.totalDistanceM,
+                                    project = { toLocalMeters().project() },
+                                )
+                                val segmentColor = segment.toColor(segmentFallbackColors[index % segmentFallbackColors.size])
+                                if (segmentColor == Color.White) {
+                                    drawPath(
+                                        path = segmentPath,
+                                        color = Color(0xFF5F6368),
+                                        style = Stroke(width = 9.dp.toPx(), cap = StrokeCap.Round),
+                                    )
+                                }
+                                drawPath(
+                                    path = segmentPath,
+                                    color = segmentColor,
+                                    style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round),
+                                )
+                            }
+                        }
+
                         localCarPosition?.project()?.let { projected ->
                             drawCircle(
                                 color = carColor,
@@ -424,6 +463,12 @@ private fun CircuitMapCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
             ) {
+                Text(
+                    text = "Segments",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = mutedColor,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Text(
                     text = "Voiture",
                     style = MaterialTheme.typography.bodyMedium,
@@ -747,6 +792,76 @@ private fun deltaGhostColor(value: String): Color {
     }
 }
 
+private fun StrategyData?.segmentsForLap(currentLap: Long?): List<StrategySegment> {
+    return when {
+        this == null -> emptyList()
+        currentLap == 1L -> startSegments
+        currentLap != null && currentLap >= 2L -> raceSegments
+        else -> emptyList()
+    }
+}
+
+private fun StrategySegment.distanceRanges(totalDistanceM: Double?): List<ClosedFloatingPointRange<Double>> {
+    val start = startDistanceM.coerceAtLeast(0.0)
+    val end = endDistanceM.coerceAtLeast(0.0)
+    return if (totalDistanceM != null && totalDistanceM > 0.0 && end < start) {
+        listOf(start..totalDistanceM, 0.0..end)
+    } else {
+        listOf(start..end)
+    }
+}
+
+private fun buildSegmentPath(
+    startDistanceM: Double,
+    endDistanceM: Double,
+    points: List<TrackPoint>,
+    totalDistanceM: Double?,
+    project: TrackPoint.() -> Offset,
+): Path {
+    val path = Path()
+    if (points.isEmpty()) return path
+
+    val start = startDistanceM.coerceAtLeast(0.0)
+    val end = endDistanceM.coerceAtLeast(start)
+    val length = end - start
+    val sampleCount = (length / SEGMENT_SAMPLE_STEP_M)
+        .toInt()
+        .coerceIn(MIN_SEGMENT_SAMPLES, MAX_SEGMENT_SAMPLES)
+    val distances = (0..sampleCount).map { index ->
+        start + ((length * index) / sampleCount)
+    }
+
+    distances.mapNotNull { distance ->
+        positionAtDistance(
+            points = points,
+            distanceM = distance,
+            totalDistanceM = totalDistanceM,
+        )?.project()
+    }.forEachIndexed { index, point ->
+        if (index == 0) {
+            path.moveTo(point.x, point.y)
+        } else {
+            path.lineTo(point.x, point.y)
+        }
+    }
+
+    return path
+}
+
+private fun StrategySegment.toColor(fallbackColor: Color): Color {
+    val key = (colorKey ?: label).orEmpty().uppercase()
+    return when {
+        key.contains("WHITE") || key.contains("BLANC") -> Color.White
+        key.contains("YELLOW") || key.contains("JAUNE") -> Color(0xFFFFD54F)
+        key.contains("BLUE") || key.contains("BLEU") -> Color(0xFF42A5F5)
+        key.contains("GREEN") || key.contains("VERT") -> Color(0xFF66BB6A)
+        else -> fallbackColor
+    }
+}
+
+private const val SEGMENT_SAMPLE_STEP_M = 8.0
+private const val MIN_SEGMENT_SAMPLES = 2
+private const val MAX_SEGMENT_SAMPLES = 96
 private const val LON_DEGREE_METERS = 111_320.0
 private const val LAT_DEGREE_METERS = 110_540.0
 

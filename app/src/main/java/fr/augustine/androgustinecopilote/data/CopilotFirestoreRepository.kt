@@ -26,6 +26,7 @@ data class CopilotFirestoreState(
     val session: RaceSessionSummary? = null,
     val telemetry: CopilotTelemetrySnapshot? = null,
     val track: TrackData? = null,
+    val strategy: StrategyData? = null,
     val connectionState: FirestoreConnectionState = FirestoreConnectionState.Initializing,
     val errorMessage: String? = null,
 )
@@ -40,6 +41,7 @@ class CopilotFirestoreRepository(
     private var sessionListener: ListenerRegistration? = null
     private var telemetryListener: ListenerRegistration? = null
     private var trackListener: ListenerRegistration? = null
+    private var strategyListener: ListenerRegistration? = null
     private var observedSessionId: String? = null
 
     fun start() {
@@ -71,6 +73,7 @@ class CopilotFirestoreRepository(
                 if (error != null) {
                     clearTelemetryListener()
                     clearTrackListener()
+                    clearStrategyListener()
                     _state.value = CopilotFirestoreState(
                         connectionState = FirestoreConnectionState.Error,
                         errorMessage = error.message,
@@ -82,6 +85,7 @@ class CopilotFirestoreRepository(
                 if (latestSessionDocument == null) {
                     clearTelemetryListener()
                     clearTrackListener()
+                    clearStrategyListener()
                     observedSessionId = null
                     _state.value = CopilotFirestoreState(connectionState = FirestoreConnectionState.NoSession)
                     return@addSnapshotListener
@@ -93,6 +97,7 @@ class CopilotFirestoreRepository(
                         session = session,
                         telemetry = if (observedSessionId == session.sessionId) it.telemetry else null,
                         track = if (observedSessionId == session.sessionId) it.track else null,
+                        strategy = if (observedSessionId == session.sessionId) it.strategy else null,
                         connectionState = FirestoreConnectionState.WaitingForTelemetry,
                         errorMessage = null,
                     )
@@ -102,6 +107,7 @@ class CopilotFirestoreRepository(
                     observedSessionId = session.sessionId
                     listenToTelemetry(firestore, session.sessionId)
                     listenToTrack(firestore, session.sessionId)
+                    listenToStrategy(firestore, session.sessionId)
                 }
             }
     }
@@ -111,6 +117,7 @@ class CopilotFirestoreRepository(
         sessionListener = null
         clearTelemetryListener()
         clearTrackListener()
+        clearStrategyListener()
     }
 
     suspend fun sendInstructions(
@@ -193,6 +200,39 @@ class CopilotFirestoreRepository(
             }
     }
 
+    private fun listenToStrategy(
+        firestore: FirebaseFirestore,
+        sessionId: String,
+    ) {
+        clearStrategyListener()
+        strategyListener = firestore.collection(RACE_SESSIONS_COLLECTION)
+            .document(sessionId)
+            .collection(STRATEGY_COLLECTION)
+            .document(CURRENT_STRATEGY_DOCUMENT)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    _state.update {
+                        it.copy(
+                            connectionState = FirestoreConnectionState.Error,
+                            errorMessage = error.message,
+                        )
+                    }
+                    return@addSnapshotListener
+                }
+
+                _state.update {
+                    it.copy(
+                        strategy = if (snapshot != null && snapshot.exists()) {
+                            snapshot.toStrategyData()
+                        } else {
+                            null
+                        },
+                        errorMessage = null,
+                    )
+                }
+            }
+    }
+
     private fun listenToTrack(
         firestore: FirebaseFirestore,
         sessionId: String,
@@ -234,6 +274,11 @@ class CopilotFirestoreRepository(
     private fun clearTrackListener() {
         trackListener?.remove()
         trackListener = null
+    }
+
+    private fun clearStrategyListener() {
+        strategyListener?.remove()
+        strategyListener = null
     }
 
     private fun DocumentSnapshot.toRaceSessionSummary(): RaceSessionSummary {
@@ -293,6 +338,53 @@ class CopilotFirestoreRepository(
         }
     }
 
+    private fun DocumentSnapshot.toStrategyData(): StrategyData {
+        return StrategyData(
+            startSegments = getStrategySegments(FIELD_START_SEGMENTS),
+            raceSegments = getStrategySegments(FIELD_RACE_SEGMENTS),
+        )
+    }
+
+    private fun DocumentSnapshot.getStrategySegments(field: String): List<StrategySegment> {
+        val rawSegments = get(field) as? List<*> ?: return emptyList()
+        return rawSegments.mapNotNull { rawSegment ->
+            val segment = rawSegment as? Map<*, *> ?: return@mapNotNull null
+            val startDistanceM = segment.firstNumber(
+                FIELD_START_DISTANCE_M,
+                FIELD_FROM_DISTANCE_M,
+                FIELD_DISTANCE_START_M,
+                FIELD_BEGIN_DISTANCE_M,
+            ) ?: return@mapNotNull null
+            val endDistanceM = segment.firstNumber(
+                FIELD_END_DISTANCE_M,
+                FIELD_TO_DISTANCE_M,
+                FIELD_DISTANCE_END_M,
+                FIELD_FINISH_DISTANCE_M,
+            ) ?: return@mapNotNull null
+
+            StrategySegment(
+                startDistanceM = startDistanceM.toDouble(),
+                endDistanceM = endDistanceM.toDouble(),
+                colorKey = segment.firstString(
+                    FIELD_COLOR,
+                    FIELD_SEGMENT_COLOR,
+                    FIELD_COLOR_KEY,
+                    FIELD_KIND,
+                    FIELD_TYPE,
+                ),
+                label = segment.firstString(FIELD_LABEL, FIELD_NAME),
+            )
+        }
+    }
+
+    private fun Map<*, *>.firstNumber(vararg fields: String): Number? {
+        return fields.firstNotNullOfOrNull { field -> this[field] as? Number }
+    }
+
+    private fun Map<*, *>.firstString(vararg fields: String): String? {
+        return fields.firstNotNullOfOrNull { field -> this[field] as? String }
+    }
+
     private fun DocumentSnapshot.getNumberField(field: String): Number? {
         return get(field) as? Number
     }
@@ -303,6 +395,8 @@ class CopilotFirestoreRepository(
         private const val LATEST_TELEMETRY_DOCUMENT = "latest"
         private const val TRACK_COLLECTION = "track"
         private const val CURRENT_TRACK_DOCUMENT = "current"
+        private const val STRATEGY_COLLECTION = "strategy"
+        private const val CURRENT_STRATEGY_DOCUMENT = "current"
         private const val INSTRUCTIONS_COLLECTION = "instructions"
         private const val CURRENT_INSTRUCTIONS_DOCUMENT = "current"
 
@@ -319,6 +413,23 @@ class CopilotFirestoreRepository(
         private const val FIELD_DISTANCE_M = "distanceM"
         private const val FIELD_LAT = "lat"
         private const val FIELD_LON = "lon"
+        private const val FIELD_START_SEGMENTS = "startSegments"
+        private const val FIELD_RACE_SEGMENTS = "raceSegments"
+        private const val FIELD_START_DISTANCE_M = "startDistanceM"
+        private const val FIELD_END_DISTANCE_M = "endDistanceM"
+        private const val FIELD_FROM_DISTANCE_M = "fromDistanceM"
+        private const val FIELD_TO_DISTANCE_M = "toDistanceM"
+        private const val FIELD_DISTANCE_START_M = "distanceStartM"
+        private const val FIELD_DISTANCE_END_M = "distanceEndM"
+        private const val FIELD_BEGIN_DISTANCE_M = "beginDistanceM"
+        private const val FIELD_FINISH_DISTANCE_M = "finishDistanceM"
+        private const val FIELD_COLOR = "color"
+        private const val FIELD_SEGMENT_COLOR = "segmentColor"
+        private const val FIELD_COLOR_KEY = "colorKey"
+        private const val FIELD_KIND = "kind"
+        private const val FIELD_TYPE = "type"
+        private const val FIELD_LABEL = "label"
+        private const val FIELD_NAME = "name"
         private const val FIELD_TIMESTAMP_ISO = "timestampIso"
         private const val FIELD_ELAPSED_SESSION_S = "elapsedSessionS"
         private const val FIELD_ELAPSED_LAP_S = "elapsedLapS"
