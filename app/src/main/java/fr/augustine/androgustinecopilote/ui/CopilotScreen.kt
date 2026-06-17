@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,13 @@ import fr.augustine.androgustinecopilote.data.TrackData
 import fr.augustine.androgustinecopilote.data.TrackPoint
 import fr.augustine.androgustinecopilote.data.positionAtDistance
 import fr.augustine.androgustinecopilote.ui.theme.AndroGustineCopiloteTheme
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 
 @Composable
 fun CopilotRoute(
@@ -68,6 +77,8 @@ fun CopilotScreen(
     onRaceStatusInstructionClick: (String) -> Unit = {},
     onPitStopRequestClick: (Boolean) -> Unit = {},
 ) {
+    var mapMode by rememberSaveable { mutableStateOf(MapMode.Canvas) }
+
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Surface(
             modifier = Modifier
@@ -91,14 +102,28 @@ fun CopilotScreen(
                     sessionId = uiState.sessionId,
                     status = uiState.status,
                 )
-                CircuitMapCard(
-                    hasSession = uiState.hasSession,
-                    track = uiState.track,
-                    strategy = uiState.strategy,
-                    currentLap = uiState.currentLapRaw,
-                    snappedDistanceM = uiState.snappedDistanceMRaw,
-                    ghostDistanceM = uiState.ghostDistanceMRaw,
+                MapModeSelector(
+                    selectedMode = mapMode,
+                    onModeSelected = { mapMode = it },
                 )
+                when (mapMode) {
+                    MapMode.Canvas -> CircuitMapCard(
+                        hasSession = uiState.hasSession,
+                        track = uiState.track,
+                        strategy = uiState.strategy,
+                        currentLap = uiState.currentLapRaw,
+                        snappedDistanceM = uiState.snappedDistanceMRaw,
+                        ghostDistanceM = uiState.ghostDistanceMRaw,
+                    )
+
+                    MapMode.OpenStreetMap -> OpenStreetMapCard(
+                        hasSession = uiState.hasSession,
+                        track = uiState.track,
+                        gpsLat = uiState.gpsLatRaw,
+                        gpsLon = uiState.gpsLonRaw,
+                        ghostDistanceM = uiState.ghostDistanceMRaw,
+                    )
+                }
                 PrimaryMetricsGrid(
                     lapProgress = uiState.lapProgress,
                     sessionChrono = uiState.sessionChrono,
@@ -215,6 +240,38 @@ private data class InstructionOption(
     val value: String,
 )
 
+private enum class MapMode {
+    Canvas,
+    OpenStreetMap,
+}
+
+@Composable
+private fun MapModeSelector(
+    selectedMode: MapMode,
+    onModeSelected: (MapMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        SelectableInstructionButton(
+            label = "Vue circuit",
+            selected = selectedMode == MapMode.Canvas,
+            enabled = true,
+            onClick = { onModeSelected(MapMode.Canvas) },
+            modifier = Modifier.weight(1f),
+        )
+        SelectableInstructionButton(
+            label = "Vue OSM",
+            selected = selectedMode == MapMode.OpenStreetMap,
+            enabled = true,
+            onClick = { onModeSelected(MapMode.OpenStreetMap) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
 @Composable
 private fun InstructionButtonGroup(
     title: String,
@@ -270,6 +327,181 @@ private fun SelectableInstructionButton(
             onClick = onClick,
         ) {
             Text(text = label)
+        }
+    }
+}
+
+@Composable
+private fun OpenStreetMapCard(
+    hasSession: Boolean,
+    track: TrackData?,
+    gpsLat: Double?,
+    gpsLon: Double?,
+    ghostDistanceM: Double?,
+    modifier: Modifier = Modifier,
+) {
+    val trackPoints = track?.points.orEmpty()
+    val carPosition = if (gpsLat != null && gpsLon != null) {
+        GeoPoint(gpsLat, gpsLon)
+    } else {
+        null
+    }
+    val ghostTrackPoint = positionAtDistance(
+        points = trackPoints,
+        distanceM = ghostDistanceM,
+        totalDistanceM = track?.totalDistanceM,
+    )
+    val ghostPosition = ghostTrackPoint?.let { GeoPoint(it.lat, it.lon) }
+    val messages = buildList {
+        if (!hasSession || track == null || trackPoints.isEmpty()) add("Circuit non disponible")
+        if (trackPoints.isNotEmpty() && carPosition == null) add("Position vehicule non disponible")
+        if (trackPoints.isNotEmpty() && ghostPosition == null) add("Ghost non disponible")
+    }
+    val trackColor = MaterialTheme.colorScheme.primary.toArgb()
+    val carColor = MaterialTheme.colorScheme.error.toArgb()
+    val ghostColor = Color(0xFF1B7F3A).toArgb()
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "OpenStreetMap",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${trackPoints.size} pts",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedColor,
+                )
+            }
+            if (trackPoints.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1.7f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = messages.firstOrNull() ?: "Circuit non disponible",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = mutedColor,
+                    )
+                }
+            } else {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1.7f),
+                    factory = { context ->
+                        Configuration.getInstance().userAgentValue = context.packageName
+                        MapView(context).apply {
+                            setTileSource(TileSourceFactory.MAPNIK)
+                            setMultiTouchControls(true)
+                            controller.setZoom(DEFAULT_OSM_ZOOM)
+                        }
+                    },
+                    update = { mapView ->
+                        mapView.overlays.clear()
+                        val circuitGeoPoints = trackPoints
+                            .sortedBy { it.distanceM }
+                            .map { GeoPoint(it.lat, it.lon) }
+
+                        val circuitLine = Polyline().apply {
+                            setPoints(circuitGeoPoints)
+                            outlinePaint.color = trackColor
+                            outlinePaint.strokeWidth = OSM_TRACK_STROKE_WIDTH
+                        }
+                        mapView.overlays.add(circuitLine)
+
+                        carPosition?.let { position ->
+                            mapView.overlays.add(
+                                Marker(mapView).apply {
+                                    this.position = position
+                                    title = "Voiture"
+                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                    icon?.setTint(carColor)
+                                },
+                            )
+                        }
+
+                        ghostPosition?.let { position ->
+                            mapView.overlays.add(
+                                Marker(mapView).apply {
+                                    this.position = position
+                                    title = "Ghost"
+                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                    icon?.setTint(ghostColor)
+                                },
+                            )
+                        }
+
+                        val boundsPoints = circuitGeoPoints + listOfNotNull(carPosition, ghostPosition)
+                        if (boundsPoints.isNotEmpty()) {
+                            mapView.post {
+                                if (boundsPoints.size == 1) {
+                                    mapView.controller.setCenter(boundsPoints.first())
+                                    mapView.controller.setZoom(DEFAULT_OSM_ZOOM)
+                                } else {
+                                    val north = boundsPoints.maxOf { it.latitude }
+                                    val south = boundsPoints.minOf { it.latitude }
+                                    val east = boundsPoints.maxOf { it.longitude }
+                                    val west = boundsPoints.minOf { it.longitude }
+                                    mapView.zoomToBoundingBox(
+                                        BoundingBox(north, east, south, west),
+                                        false,
+                                        OSM_BOUNDS_PADDING_PX,
+                                    )
+                                }
+                            }
+                        }
+                        mapView.invalidate()
+                    },
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Text(
+                    text = "Circuit",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Voiture",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Ghost",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF1B7F3A),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            messages.filterNot { it == "Circuit non disponible" && trackPoints.isEmpty() }.forEach { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedColor,
+                )
+            }
         }
     }
 }
@@ -868,6 +1100,9 @@ private fun StrategySegment.toColor(fallbackColor: Color): Color {
 private const val SEGMENT_SAMPLE_STEP_M = 8.0
 private const val MIN_SEGMENT_SAMPLES = 2
 private const val MAX_SEGMENT_SAMPLES = 96
+private const val DEFAULT_OSM_ZOOM = 17.0
+private const val OSM_BOUNDS_PADDING_PX = 64
+private const val OSM_TRACK_STROKE_WIDTH = 8f
 private const val LON_DEGREE_METERS = 111_320.0
 private const val LAT_DEGREE_METERS = 110_540.0
 
