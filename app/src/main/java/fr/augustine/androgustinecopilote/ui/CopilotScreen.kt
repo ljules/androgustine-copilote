@@ -1,6 +1,7 @@
 package fr.augustine.androgustinecopilote.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -55,6 +58,8 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import fr.augustine.androgustinecopilote.R
+import fr.augustine.androgustinecopilote.ui.theme.OxaniumFontFamily
 
 @Composable
 fun CopilotRoute(
@@ -77,21 +82,34 @@ fun CopilotScreen(
     onRaceStatusInstructionClick: (String) -> Unit = {},
     onPitStopRequestClick: (Boolean) -> Unit = {},
 ) {
-    var mapMode by rememberSaveable { mutableStateOf(MapMode.Canvas) }
 
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
-        Surface(
+    // Style de base pour la police :
+    val textStyle = androidx.compose.ui.text.TextStyle(
+        fontFamily = OxaniumFontFamily,
+        color = Color.White
+    )
+
+    var mapMode by rememberSaveable { mutableStateOf(MapMode.Canvas) }
+    Scaffold { innerPadding ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            color = MaterialTheme.colorScheme.background,
+                .padding(innerPadding)
         ) {
+            // Image de fond (background ) :
+            Image(
+                painter = painterResource(R.drawable.background_portrait_dark),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // Colonne principale (défilable ):
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(16.dp)
             ) {
                 DashboardHeader(
                     firestoreStatus = uiState.firestoreStatus,
@@ -782,6 +800,7 @@ private fun DashboardHeader(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        // Titre principal (header) :
         Text(
             text = "AndroGustine Copilote",
             style = MaterialTheme.typography.headlineMedium,
