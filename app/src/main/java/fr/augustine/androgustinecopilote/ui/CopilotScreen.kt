@@ -424,28 +424,31 @@ private fun CockpitWeatherAndHeartRowCorrected(uiState: CopilotUiState) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "\uD83C\uDF21\uFE0F ${uiState.weatherTemperatureC} \u00B0C",
-            modifier = Modifier.weight(1f),
+            text = "\uD83C\uDF21\uFE0F${weatherTemperatureLabel(uiState.weatherTemperatureC)}",
+            modifier = Modifier.weight(1.15f),
             color = Color.White,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             maxLines = 1,
+            overflow = TextOverflow.Clip,
         )
         Text(
-            text = "\u224B ${uiState.weatherWindKmh} km/h",
-            modifier = Modifier.weight(1f),
+            text = "\u224B${weatherWindLabel(uiState.weatherWindKmh)}",
+            modifier = Modifier.weight(1.2f),
             color = Color.White,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             maxLines = 1,
+            overflow = TextOverflow.Clip,
         )
         Text(
-            text = "\uD83D\uDCA7 ${formatRainPercent(uiState.weatherRainProbability)}",
-            modifier = Modifier.weight(1f),
+            text = "\uD83D\uDCA7${formatRainPercent(uiState.weatherRainProbability)}",
+            modifier = Modifier.weight(0.75f),
             color = Color.White,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             maxLines = 1,
+            overflow = TextOverflow.Clip,
         )
         Row(
-            modifier = Modifier.weight(1.25f),
+            modifier = Modifier.weight(1.15f),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -477,6 +480,7 @@ private fun CockpitPaceInstructionPanelCorrected(
             selected = selectedValue == CopilotInstructions.PACE_ACCELERATE,
             color = DangerRed,
             enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
             onClick = { onOptionClick(CopilotInstructions.PACE_ACCELERATE) },
         )
         CockpitInstructionPillCorrected(
@@ -484,6 +488,7 @@ private fun CockpitPaceInstructionPanelCorrected(
             selected = selectedValue == CopilotInstructions.PACE_MAINTAIN,
             color = FlagGreen,
             enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
             onClick = { onOptionClick(CopilotInstructions.PACE_MAINTAIN) },
         )
         CockpitInstructionPillCorrected(
@@ -491,6 +496,7 @@ private fun CockpitPaceInstructionPanelCorrected(
             selected = selectedValue == CopilotInstructions.PACE_SLOW_DOWN,
             color = RacingCyan,
             enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
             onClick = { onOptionClick(CopilotInstructions.PACE_SLOW_DOWN) },
         )
     }
@@ -1272,6 +1278,22 @@ private fun InstructionsCard(
 
 // ENUMERATIONS & CLASSES DE DONNEES :
 // -----------------------------------
+private fun weatherTemperatureLabel(value: String): String {
+    return if (value.contains("°C") || value.contains("\u00B0C")) {
+        value
+    } else {
+        "$value\u00B0C"
+    }
+}
+
+private fun weatherWindLabel(value: String): String {
+    return if (value.contains("km/h")) {
+        value
+    } else {
+        "${value}km/h"
+    }
+}
+
 private data class InstructionOption(
     val label: String,
     val value: String,
