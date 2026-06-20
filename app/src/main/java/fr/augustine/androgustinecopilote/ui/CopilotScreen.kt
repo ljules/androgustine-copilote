@@ -2,6 +2,7 @@ package fr.augustine.androgustinecopilote.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,6 +54,9 @@ import fr.augustine.androgustinecopilote.data.TrackData
 import fr.augustine.androgustinecopilote.data.TrackPoint
 import fr.augustine.androgustinecopilote.data.positionAtDistance
 import fr.augustine.androgustinecopilote.ui.theme.AndroGustineCopiloteTheme
+import fr.augustine.androgustinecopilote.ui.theme.DangerRed
+import fr.augustine.androgustinecopilote.ui.theme.FlagGreen
+import fr.augustine.androgustinecopilote.ui.theme.ShellOrange
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
@@ -118,8 +124,20 @@ fun CopilotScreen(
                 // Entête écran (état de la connexion) :
                 DashboardHeader(
                     firestoreStatus = uiState.firestoreStatus,
+                    connectionIndicator = uiState.firestoreConnectionIndicator,
                     errorMessage = uiState.errorMessage,
                 )
+
+                // Grille des métrics de la session de course : num tours; vitesse; chrono
+                PrimaryMetricsGrid(
+                    lapProgress = uiState.lapProgress,
+                    sessionChrono = uiState.sessionChrono,
+                    lapChrono = uiState.lapChrono,
+                    speedLabel = uiState.speedLabel,
+                    deltaGhostLabel = uiState.deltaGhostLabel,
+                    heartRateLabel = uiState.heartRateLabel,
+                )
+
                 SessionCard(
                     trackName = uiState.trackName,
                     sessionId = uiState.sessionId,
@@ -150,14 +168,7 @@ fun CopilotScreen(
                         ghostDistanceM = uiState.ghostDistanceMRaw,
                     )
                 }
-                PrimaryMetricsGrid(
-                    lapProgress = uiState.lapProgress,
-                    sessionChrono = uiState.sessionChrono,
-                    lapChrono = uiState.lapChrono,
-                    speedLabel = uiState.speedLabel,
-                    deltaGhostLabel = uiState.deltaGhostLabel,
-                    heartRateLabel = uiState.heartRateLabel,
-                )
+
                 SecondaryCard(
                     title = "Meteo",
                     value = uiState.weatherLabel,
@@ -825,6 +836,7 @@ private fun CircuitMapCard(
 @Composable
 private fun DashboardHeader(
     firestoreStatus: String,
+    connectionIndicator: ConnectionIndicator,
     errorMessage: String?,
     modifier: Modifier = Modifier,
 ) {
@@ -838,12 +850,25 @@ private fun DashboardHeader(
 //            style = MaterialTheme.typography.headlineMedium,
 //            fontWeight = FontWeight.Bold,
 //        )
-        Text(
-            text = firestoreStatus,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimary,
-            fontWeight = FontWeight.Light,
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(
+                        color = connectionIndicator.toColor(),
+                        shape = CircleShape,
+                    ),
+            )
+            Text(
+                text = firestoreStatus,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimary,
+                fontWeight = FontWeight.Light,
+            )
+        }
         errorMessage?.let {
             Text(
                 text = it,
@@ -851,6 +876,14 @@ private fun DashboardHeader(
                 color = MaterialTheme.colorScheme.error,
             )
         }
+    }
+}
+
+private fun ConnectionIndicator.toColor(): Color {
+    return when (this) {
+        ConnectionIndicator.Green -> FlagGreen
+        ConnectionIndicator.Orange -> ShellOrange
+        ConnectionIndicator.Red -> DangerRed
     }
 }
 

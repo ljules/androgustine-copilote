@@ -22,6 +22,7 @@ import java.util.Locale
 
 data class CopilotUiState(
     val firestoreStatus: String = "Hors ligne",
+    val firestoreConnectionIndicator: ConnectionIndicator = ConnectionIndicator.Red,
     val hasSession: Boolean = false,
     val track: TrackData? = null,
     val strategy: StrategyData? = null,
@@ -65,6 +66,12 @@ data class CopilotUiState(
     val instructionErrorMessage: String? = null,
     val isSendingInstruction: Boolean = false,
 )
+
+enum class ConnectionIndicator {
+    Green,
+    Orange,
+    Red,
+}
 
 private data class InstructionSendUiState(
     val selectedPaceInstruction: String = CopilotInstructions.PACE_MAINTAIN,
@@ -180,6 +187,7 @@ class CopilotViewModel(
 
         return CopilotUiState(
             firestoreStatus = state.connectionState.toDisplayText(),
+            firestoreConnectionIndicator = state.connectionState.toIndicator(),
             hasSession = session != null,
             track = state.track,
             strategy = state.strategy,
@@ -236,10 +244,23 @@ class CopilotViewModel(
         return when (this) {
             FirestoreConnectionState.Initializing -> "Connexion Firestore..."
             FirestoreConnectionState.Connected -> "Connecte - telemetry/latest actif"
+            FirestoreConnectionState.OfflineCache -> "Hors ligne - donnees Firestore en cache"
             FirestoreConnectionState.NoSession -> "Aucune session trouvee"
             FirestoreConnectionState.WaitingForTelemetry -> "Session trouvee - telemetry/latest absent"
             FirestoreConnectionState.Error -> "Erreur Firestore"
             FirestoreConnectionState.FirebaseNotInitialized -> "Firebase non initialise"
+        }
+    }
+
+    private fun FirestoreConnectionState.toIndicator(): ConnectionIndicator {
+        return when (this) {
+            FirestoreConnectionState.Connected -> ConnectionIndicator.Green
+            FirestoreConnectionState.OfflineCache,
+            FirestoreConnectionState.Error,
+            FirestoreConnectionState.FirebaseNotInitialized -> ConnectionIndicator.Red
+            FirestoreConnectionState.Initializing,
+            FirestoreConnectionState.NoSession,
+            FirestoreConnectionState.WaitingForTelemetry -> ConnectionIndicator.Orange
         }
     }
 }

@@ -5,6 +5,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,7 @@ import kotlin.coroutines.resume
 enum class FirestoreConnectionState {
     Initializing,
     Connected,
+    OfflineCache,
     NoSession,
     WaitingForTelemetry,
     Error,
@@ -69,7 +71,7 @@ class CopilotFirestoreRepository(
         sessionListener = firestore.collection(RACE_SESSIONS_COLLECTION)
             .orderBy(FIELD_CREATED_AT_ISO, Query.Direction.DESCENDING)
             .limit(1)
-            .addSnapshotListener { snapshots, error ->
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshots, error ->
                 if (error != null) {
                     clearTelemetryListener()
                     clearTrackListener()
@@ -87,18 +89,29 @@ class CopilotFirestoreRepository(
                     clearTrackListener()
                     clearStrategyListener()
                     observedSessionId = null
-                    _state.value = CopilotFirestoreState(connectionState = FirestoreConnectionState.NoSession)
+                    _state.value = CopilotFirestoreState(
+                        connectionState = if (snapshots?.metadata?.isFromCache == true) {
+                            FirestoreConnectionState.OfflineCache
+                        } else {
+                            FirestoreConnectionState.NoSession
+                        },
+                    )
                     return@addSnapshotListener
                 }
 
                 val session = latestSessionDocument.toRaceSessionSummary()
+                val sessionConnectionState = if (snapshots.metadata.isFromCache) {
+                    FirestoreConnectionState.OfflineCache
+                } else {
+                    FirestoreConnectionState.WaitingForTelemetry
+                }
                 _state.update {
                     it.copy(
                         session = session,
                         telemetry = if (observedSessionId == session.sessionId) it.telemetry else null,
                         track = if (observedSessionId == session.sessionId) it.track else null,
                         strategy = if (observedSessionId == session.sessionId) it.strategy else null,
-                        connectionState = FirestoreConnectionState.WaitingForTelemetry,
+                        connectionState = sessionConnectionState,
                         errorMessage = null,
                     )
                 }
@@ -168,7 +181,7 @@ class CopilotFirestoreRepository(
             .document(sessionId)
             .collection(TELEMETRY_COLLECTION)
             .document(LATEST_TELEMETRY_DOCUMENT)
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (error != null) {
                     _state.update {
                         it.copy(
@@ -183,7 +196,11 @@ class CopilotFirestoreRepository(
                     _state.update {
                         it.copy(
                             telemetry = null,
-                            connectionState = FirestoreConnectionState.WaitingForTelemetry,
+                            connectionState = if (snapshot?.metadata?.isFromCache == true) {
+                                FirestoreConnectionState.OfflineCache
+                            } else {
+                                FirestoreConnectionState.WaitingForTelemetry
+                            },
                             errorMessage = null,
                         )
                     }
@@ -193,7 +210,11 @@ class CopilotFirestoreRepository(
                 _state.update {
                     it.copy(
                         telemetry = snapshot.toCopilotTelemetrySnapshot(),
-                        connectionState = FirestoreConnectionState.Connected,
+                        connectionState = if (snapshot.metadata.isFromCache) {
+                            FirestoreConnectionState.OfflineCache
+                        } else {
+                            FirestoreConnectionState.Connected
+                        },
                         errorMessage = null,
                     )
                 }
