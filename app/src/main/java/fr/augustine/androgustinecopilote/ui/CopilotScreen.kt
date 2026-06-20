@@ -1,5 +1,8 @@
 package fr.augustine.androgustinecopilote.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -50,6 +53,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.modifier.modifierLocalConsumer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -81,6 +85,7 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import fr.augustine.androgustinecopilote.R
 import fr.augustine.androgustinecopilote.ui.theme.OxaniumFontFamily
+import kotlin.system.exitProcess
 
 @Composable
 fun CopilotRoute(
@@ -122,6 +127,7 @@ private fun CockpitScreenContent(
     onPitStopRequestClick: (Boolean) -> Unit,
 ) {
     var mapMode by rememberSaveable { mutableStateOf(MapMode.Canvas) }
+    val context = LocalContext.current
 
     Scaffold(containerColor = Color.Black) { innerPadding ->
         Box(
@@ -210,7 +216,51 @@ private fun CockpitScreenContent(
                     )
                 }
             }
+            ExitApplicationButton(
+                onClick = { context.closeApplication() },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 12.dp),
+            )
         }
+    }
+}
+
+@Composable
+private fun ExitApplicationButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = CircleShape
+    Box(
+        modifier = modifier
+            .size(46.dp)
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.55f))
+            .border(2.dp, ShellOrange, shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "\u23FB",
+            color = ShellOrange,
+            fontSize = 27.sp,
+            lineHeight = 27.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+private fun Context.closeApplication() {
+    findActivity()?.finishAndRemoveTask()
+    exitProcess(0)
+}
+
+private tailrec fun Context.findActivity(): Activity? {
+    return when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
     }
 }
 
