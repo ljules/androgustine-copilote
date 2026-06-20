@@ -89,7 +89,11 @@ fun CopilotScreen(
         color = Color.White
     )
 
+    // Choix du mode de la carte du circuit :
     var mapMode by rememberSaveable { mutableStateOf(MapMode.Canvas) }
+
+    // LAYOUT ECRAN :
+    // --------------
     Scaffold { innerPadding ->
         Box(
             modifier = Modifier
@@ -111,6 +115,7 @@ fun CopilotScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
+                // Entête écran (état de la connexion) :
                 DashboardHeader(
                     firestoreStatus = uiState.firestoreStatus,
                     errorMessage = uiState.errorMessage,
@@ -256,16 +261,30 @@ private fun InstructionsCard(
     }
 }
 
+
+
+
+// ENUMERATIONS & CLASSES DE DONNEES :
+// -----------------------------------
 private data class InstructionOption(
     val label: String,
     val value: String,
 )
 
+/**
+ * Enumération des 2 modes d'affichage du circuit :
+ */
 private enum class MapMode {
     Canvas,
     OpenStreetMap,
 }
 
+// FONCTIONS UTILITAIRES & AFFICHAGE DES ELEMENTS :
+// ------------------------------------------------
+
+/**
+ * Sélecteur de mode pour l'affichage de la carte de la piste
+ */
 @Composable
 private fun MapModeSelector(
     selectedMode: MapMode,
@@ -293,6 +312,9 @@ private fun MapModeSelector(
     }
 }
 
+/**
+ * Interface de sélection des instructions.
+ */
 @Composable
 private fun InstructionButtonGroup(
     title: String,
@@ -352,6 +374,9 @@ private fun SelectableInstructionButton(
     }
 }
 
+/**
+ * Génère de l'affichage OpenStreetMap
+ */
 @Composable
 private fun OpenStreetMapCard(
     hasSession: Boolean,
@@ -566,6 +591,10 @@ private fun OpenStreetMapCard(
     }
 }
 
+
+/**
+ * Génère le tracé du circuit
+ */
 @Composable
 private fun CircuitMapCard(
     hasSession: Boolean,
@@ -790,6 +819,9 @@ private fun CircuitMapCard(
     }
 }
 
+/**
+ * Génère l'affichage de l'entête
+ */
 @Composable
 private fun DashboardHeader(
     firestoreStatus: String,
@@ -801,16 +833,16 @@ private fun DashboardHeader(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         // Titre principal (header) :
-        Text(
-            text = "AndroGustine Copilote",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
+//        Text(
+//            text = "AndroGustine Copilote",
+//            style = MaterialTheme.typography.headlineMedium,
+//            fontWeight = FontWeight.Bold,
+//        )
         Text(
             text = firestoreStatus,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimary,
+            fontWeight = FontWeight.Light,
         )
         errorMessage?.let {
             Text(
@@ -1208,7 +1240,7 @@ private fun CopilotScreenPreview() {
     AndroGustineCopiloteTheme {
         CopilotScreen(
             uiState = CopilotUiState(
-                firestoreStatus = "Connecte - telemetry/latest actif",
+                firestoreStatus = "Connexion en cours...",
                 trackName = "Silesia Ring",
                 sessionId = "demo-session",
                 status = "RUNNING",

@@ -8,37 +8,41 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import fr.augustine.androgustinecopilote.R
 
-// Set of Material typography styles to start with
-val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
-    )
-
-// Police personnalisée :
 val OxaniumFontFamily = FontFamily(
     Font(R.font.oxanium_light, FontWeight.Light),
     Font(R.font.oxanium_regular, FontWeight.Normal),
+    Font(R.font.oxanium_medium, FontWeight.Medium),
     Font(R.font.oxanium_semibold, FontWeight.SemiBold),
     Font(R.font.oxanium_bold, FontWeight.Bold),
-    Font(R.font.oxanium_extrabold, FontWeight.ExtraBold))
+    Font(R.font.oxanium_extrabold, FontWeight.ExtraBold),
+)
+
+private val DefaultTypography = Typography()
+
+private fun TextStyle.withOxanium(): TextStyle {
+    return copy(fontFamily = OxaniumFontFamily)
+}
+
+val Typography = Typography(
+    displayLarge = DefaultTypography.displayLarge.withOxanium(),
+    displayMedium = DefaultTypography.displayMedium.withOxanium(),
+    displaySmall = DefaultTypography.displaySmall.withOxanium(),
+    headlineLarge = DefaultTypography.headlineLarge.withOxanium(),
+    headlineMedium = DefaultTypography.headlineMedium.withOxanium(),
+    headlineSmall = DefaultTypography.headlineSmall.withOxanium(),
+    titleLarge = DefaultTypography.titleLarge.withOxanium(),
+    titleMedium = DefaultTypography.titleMedium.withOxanium(),
+    titleSmall = DefaultTypography.titleSmall.withOxanium(),
+    bodyLarge = TextStyle(
+        fontFamily = OxaniumFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.5.sp,
+    ),
+    bodyMedium = DefaultTypography.bodyMedium.withOxanium(),
+    bodySmall = DefaultTypography.bodySmall.withOxanium(),
+    labelLarge = DefaultTypography.labelLarge.withOxanium(),
+    labelMedium = DefaultTypography.labelMedium.withOxanium(),
+    labelSmall = DefaultTypography.labelSmall.withOxanium(),
+)

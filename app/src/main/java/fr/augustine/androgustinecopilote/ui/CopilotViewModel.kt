@@ -21,7 +21,7 @@ import java.time.Instant
 import java.util.Locale
 
 data class CopilotUiState(
-    val firestoreStatus: String = "Initialisation",
+    val firestoreStatus: String = "Hors ligne",
     val hasSession: Boolean = false,
     val track: TrackData? = null,
     val strategy: StrategyData? = null,
