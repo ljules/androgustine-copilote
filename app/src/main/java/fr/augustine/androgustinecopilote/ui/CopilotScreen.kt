@@ -239,7 +239,7 @@ private fun CockpitScreenContent(
                 CockpitDivider()
                 CockpitTelemetryPanel(uiState)
                 CockpitDivider()
-                CockpitWeatherAndHeartRow(uiState)
+                CockpitWeatherAndHeartRowCorrected(uiState)
                 CockpitDivider()
                 when (mapMode) {
                     MapMode.Canvas -> CockpitCircuitMapPanel(
@@ -263,13 +263,13 @@ private fun CockpitScreenContent(
                     )
                 }
                 MapModeSelector(selectedMode = mapMode, onModeSelected = { mapMode = it })
-                CockpitPaceInstructionPanel(
+                CockpitPaceInstructionPanelCorrected(
                     selectedValue = uiState.selectedPaceInstruction,
                     enabled = !uiState.isSendingInstruction,
                     onOptionClick = onPaceInstructionClick,
                 )
                 CockpitDivider()
-                CockpitRaceStatusPanel(
+                CockpitRaceStatusPanelCorrected(
                     selectedValue = uiState.selectedRaceStatusInstruction,
                     enabled = !uiState.isSendingInstruction,
                     onOptionClick = onRaceStatusInstructionClick,
@@ -410,6 +410,222 @@ private fun CockpitIconValueRow(
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
             overflow = TextOverflow.Clip,
+        )
+    }
+}
+
+@Composable
+private fun CockpitWeatherAndHeartRowCorrected(uiState: CopilotUiState) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(32.dp)
+            .padding(horizontal = 34.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "\uD83C\uDF21\uFE0F ${uiState.weatherTemperatureC} \u00B0C",
+            modifier = Modifier.weight(1f),
+            color = Color.White,
+            fontSize = 14.sp,
+            maxLines = 1,
+        )
+        Text(
+            text = "\u224B ${uiState.weatherWindKmh} km/h",
+            modifier = Modifier.weight(1f),
+            color = Color.White,
+            fontSize = 14.sp,
+            maxLines = 1,
+        )
+        Text(
+            text = "\uD83D\uDCA7 ${formatRainPercent(uiState.weatherRainProbability)}",
+            modifier = Modifier.weight(1f),
+            color = Color.White,
+            fontSize = 14.sp,
+            maxLines = 1,
+        )
+        Row(
+            modifier = Modifier.weight(1.25f),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.heart),
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+            )
+            Text(
+                text = uiState.heartRateLabel,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CockpitPaceInstructionPanelCorrected(
+    selectedValue: String,
+    enabled: Boolean,
+    onOptionClick: (String) -> Unit,
+) {
+    CockpitInstructionPanelCorrected(icon = R.drawable.ico_speed_meter, height = 143.dp) {
+        CockpitInstructionPillCorrected(
+            label = "Acc\u00E9l\u00E9rer",
+            selected = selectedValue == CopilotInstructions.PACE_ACCELERATE,
+            color = DangerRed,
+            enabled = enabled,
+            onClick = { onOptionClick(CopilotInstructions.PACE_ACCELERATE) },
+        )
+        CockpitInstructionPillCorrected(
+            label = "Maintenir",
+            selected = selectedValue == CopilotInstructions.PACE_MAINTAIN,
+            color = FlagGreen,
+            enabled = enabled,
+            onClick = { onOptionClick(CopilotInstructions.PACE_MAINTAIN) },
+        )
+        CockpitInstructionPillCorrected(
+            label = "Ralentir",
+            selected = selectedValue == CopilotInstructions.PACE_SLOW_DOWN,
+            color = RacingCyan,
+            enabled = enabled,
+            onClick = { onOptionClick(CopilotInstructions.PACE_SLOW_DOWN) },
+        )
+    }
+}
+
+@Composable
+private fun CockpitRaceStatusPanelCorrected(
+    selectedValue: String,
+    enabled: Boolean,
+    onOptionClick: (String) -> Unit,
+) {
+    CockpitInstructionPanelCorrected(icon = null, height = 152.dp) {
+        CockpitInstructionWithFlagCorrected(
+            flag = R.drawable.flag_green,
+            label = "Course",
+            selected = selectedValue == CopilotInstructions.STATUS_RACE,
+            color = FlagGreen,
+            enabled = enabled,
+            onClick = { onOptionClick(CopilotInstructions.STATUS_RACE) },
+        )
+        CockpitInstructionWithFlagCorrected(
+            flag = R.drawable.flag_yellow,
+            label = "Ne pas doubler",
+            selected = selectedValue == CopilotInstructions.STATUS_NO_OVERTAKING,
+            color = FlagYellow,
+            enabled = enabled,
+            onClick = { onOptionClick(CopilotInstructions.STATUS_NO_OVERTAKING) },
+        )
+        CockpitInstructionWithFlagCorrected(
+            flag = R.drawable.flag_red,
+            label = "Stop",
+            selected = selectedValue == CopilotInstructions.STATUS_STOP,
+            color = DangerRed,
+            enabled = enabled,
+            onClick = { onOptionClick(CopilotInstructions.STATUS_STOP) },
+        )
+    }
+}
+
+@Composable
+private fun CockpitInstructionPanelCorrected(
+    icon: Int?,
+    height: Dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.width(82.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            icon?.let {
+                Image(
+                    painter = painterResource(it),
+                    contentDescription = null,
+                    modifier = Modifier.size(70.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun CockpitInstructionWithFlagCorrected(
+    flag: Int,
+    label: String,
+    selected: Boolean,
+    color: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            painter = painterResource(flag),
+            contentDescription = null,
+            modifier = Modifier
+                .size(38.dp)
+                .padding(end = 8.dp),
+            contentScale = ContentScale.Fit,
+        )
+        CockpitInstructionPillCorrected(
+            label = label,
+            selected = selected,
+            color = color,
+            enabled = enabled,
+            modifier = Modifier.weight(1f),
+            onClick = onClick,
+        )
+    }
+}
+
+@Composable
+private fun CockpitInstructionPillCorrected(
+    label: String,
+    selected: Boolean,
+    color: Color,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Box(
+        modifier = modifier
+            .height(38.dp)
+            .clip(shape)
+            .background(if (selected) color else Color.Transparent)
+            .border(3.dp, color, shape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.White else color,
+            fontSize = 19.sp,
+            lineHeight = 19.sp,
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
