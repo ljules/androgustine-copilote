@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.modifier.modifierLocalConsumer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -109,101 +111,6 @@ fun CopilotScreen(
         onPitStopRequestClick = onPitStopRequestClick,
     )
     return
-
-    // Style de base pour la police :
-    val textStyle = androidx.compose.ui.text.TextStyle(
-        fontFamily = OxaniumFontFamily,
-        color = Color.White
-    )
-
-    // Choix du mode de la carte du circuit :
-    var mapMode by rememberSaveable { mutableStateOf(MapMode.Canvas) }
-
-    // LAYOUT ECRAN :
-    // --------------
-    Scaffold { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Image de fond (background ) :
-            Image(
-                painter = painterResource(R.drawable.background_portrait_dark),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-
-            // Colonne principale (défilable ):
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-            ) {
-                // Entête écran (état de la connexion) :
-                DashboardHeader(
-                    firestoreStatus = uiState.firestoreStatus,
-                    connectionIndicator = uiState.firestoreConnectionIndicator,
-                    errorMessage = uiState.errorMessage,
-                )
-
-                // Grille des métrics de la session de course : num tours; vitesse; chrono
-                PrimaryMetricsGrid(
-                    lapProgress = uiState.lapProgress,
-                    sessionChrono = uiState.sessionChrono,
-                    lapChrono = uiState.lapChrono,
-                    speedLabel = uiState.speedLabel,
-                    deltaGhostLabel = uiState.deltaGhostLabel,
-                    heartRateLabel = uiState.heartRateLabel,
-                )
-
-                SessionCard(
-                    trackName = uiState.trackName,
-                    sessionId = uiState.sessionId,
-                    status = uiState.status,
-                )
-                MapModeSelector(
-                    selectedMode = mapMode,
-                    onModeSelected = { mapMode = it },
-                )
-                when (mapMode) {
-                    MapMode.Canvas -> CircuitMapCard(
-                        hasSession = uiState.hasSession,
-                        track = uiState.track,
-                        strategy = uiState.strategy,
-                        currentLap = uiState.currentLapRaw,
-                        snappedDistanceM = uiState.snappedDistanceMRaw,
-                        ghostDistanceM = uiState.ghostDistanceMRaw,
-                    )
-
-                    MapMode.OpenStreetMap -> OpenStreetMapCard(
-                        hasSession = uiState.hasSession,
-                        track = uiState.track,
-                        strategy = uiState.strategy,
-                        currentLap = uiState.currentLapRaw,
-                        gpsLat = uiState.gpsLatRaw,
-                        gpsLon = uiState.gpsLonRaw,
-                        snappedDistanceM = uiState.snappedDistanceMRaw,
-                        ghostDistanceM = uiState.ghostDistanceMRaw,
-                    )
-                }
-
-                SecondaryCard(
-                    title = "Meteo",
-                    value = uiState.weatherLabel,
-                )
-                InstructionsCard(
-                    uiState = uiState,
-                    onPaceInstructionClick = onPaceInstructionClick,
-                    onRaceStatusInstructionClick = onRaceStatusInstructionClick,
-                    onPitStopRequestClick = onPitStopRequestClick,
-                )
-                DebugSection(uiState = uiState)
-            }
-        }
-    }
 }
 
 @Composable
@@ -237,10 +144,13 @@ private fun CockpitScreenContent(
             ) {
                 CockpitHeader(uiState.firestoreStatus, uiState.firestoreConnectionIndicator, uiState.errorMessage)
                 CockpitDivider()
+                Spacer(Modifier.height(10.dp))
                 CockpitTelemetryPanel(uiState)
+                Spacer(Modifier.height(15.dp))
                 CockpitDivider()
                 CockpitWeatherAndHeartRowCorrected(uiState)
                 CockpitDivider()
+                Spacer(Modifier.height(20.dp))
                 when (mapMode) {
                     MapMode.Canvas -> CockpitCircuitMapPanel(
                         hasSession = uiState.hasSession,
@@ -263,18 +173,26 @@ private fun CockpitScreenContent(
                     )
                 }
                 MapModeSelector(selectedMode = mapMode, onModeSelected = { mapMode = it })
+
+                Spacer(Modifier.height(30.dp))
+
                 CockpitPaceInstructionPanelCorrected(
                     selectedValue = uiState.selectedPaceInstruction,
                     enabled = !uiState.isSendingInstruction,
                     onOptionClick = onPaceInstructionClick,
                 )
+
+                Spacer(Modifier.height(15.dp))
                 CockpitDivider()
+                Spacer(Modifier.height(15.dp))
                 CockpitRaceStatusPanelCorrected(
                     selectedValue = uiState.selectedRaceStatusInstruction,
                     enabled = !uiState.isSendingInstruction,
                     onOptionClick = onRaceStatusInstructionClick,
                 )
+                Spacer(Modifier.height(15.dp))
                 CockpitDivider()
+                Spacer(Modifier.height(15.dp))
                 CockpitPitStopPanel(
                     requested = uiState.pitStopRequest,
                     enabled = !uiState.isSendingInstruction,
@@ -475,28 +393,25 @@ private fun CockpitPaceInstructionPanelCorrected(
     onOptionClick: (String) -> Unit,
 ) {
     CockpitInstructionPanelCorrected(icon = R.drawable.ico_speed_meter, height = 143.dp) {
-        CockpitInstructionPillCorrected(
+        CockpitInstructionWithSpacerCorrected(
             label = "Acc\u00E9l\u00E9rer",
             selected = selectedValue == CopilotInstructions.PACE_ACCELERATE,
             color = DangerRed,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
             onClick = { onOptionClick(CopilotInstructions.PACE_ACCELERATE) },
         )
-        CockpitInstructionPillCorrected(
+        CockpitInstructionWithSpacerCorrected(
             label = "Maintenir",
             selected = selectedValue == CopilotInstructions.PACE_MAINTAIN,
             color = FlagGreen,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
             onClick = { onOptionClick(CopilotInstructions.PACE_MAINTAIN) },
         )
-        CockpitInstructionPillCorrected(
+        CockpitInstructionWithSpacerCorrected(
             label = "Ralentir",
             selected = selectedValue == CopilotInstructions.PACE_SLOW_DOWN,
             color = RacingCyan,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
             onClick = { onOptionClick(CopilotInstructions.PACE_SLOW_DOWN) },
         )
     }
@@ -589,10 +504,35 @@ private fun CockpitInstructionWithFlagCorrected(
             painter = painterResource(flag),
             contentDescription = null,
             modifier = Modifier
-                .size(38.dp)
-                .padding(end = 8.dp),
+                .size(40.dp),
             contentScale = ContentScale.Fit,
         )
+        Spacer(modifier = Modifier.width(30.dp))
+
+        CockpitInstructionPillCorrected(
+            label = label,
+            selected = selected,
+            color = color,
+            enabled = enabled,
+            modifier = Modifier.weight(1f),
+            onClick = onClick,
+        )
+    }
+}
+
+@Composable
+private fun CockpitInstructionWithSpacerCorrected(
+    label: String,
+    selected: Boolean,
+    color: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.width(38.dp).padding(end = 8.dp))
         CockpitInstructionPillCorrected(
             label = label,
             selected = selected,
@@ -1061,14 +1001,13 @@ private fun CockpitOpenStreetMapPanel(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(146.dp),
+            .height(146.dp)
+            .clip(RoundedCornerShape(0.dp)),
         contentAlignment = Alignment.Center,
     ) {
         if (trackPoints.isNotEmpty()) {
             AndroidView(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2.4f),
+                modifier = Modifier.fillMaxSize(),
                 factory = { context ->
                     Configuration.getInstance().userAgentValue = context.packageName
                     MapView(context).apply {
@@ -1086,7 +1025,7 @@ private fun CockpitOpenStreetMapPanel(
                     mapView.overlays.add(
                         Polyline().apply {
                             setPoints(circuitGeoPoints)
-                            outlinePaint.color = Color.White.toArgb()
+                            outlinePaint.color = Color.Black.toArgb()
                             outlinePaint.strokeWidth = OSM_TRACK_STROKE_WIDTH
                         },
                     )
