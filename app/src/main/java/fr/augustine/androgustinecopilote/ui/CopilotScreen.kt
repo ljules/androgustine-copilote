@@ -232,24 +232,34 @@ private fun ExitApplicationButton(
     modifier: Modifier = Modifier,
 ) {
     val shape = CircleShape
+    var lastTapAtMs by rememberSaveable { mutableStateOf(0L) }
     Box(
         modifier = modifier
             .size(46.dp)
             .clip(shape)
             .background(Color.Black.copy(alpha = 0.55f))
             .border(2.dp, ShellOrange, shape)
-            .clickable(onClick = onClick),
+            .clickable {
+                val now = System.currentTimeMillis()
+                if (now - lastTapAtMs <= EXIT_DOUBLE_TAP_WINDOW_MS) {
+                    onClick()
+                } else {
+                    lastTapAtMs = now
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "\u23FB",
+            text = "\u00D7",
             color = ShellOrange,
-            fontSize = 27.sp,
-            lineHeight = 27.sp,
+            fontSize = 34.sp,
+            lineHeight = 34.sp,
             fontWeight = FontWeight.Bold,
         )
     }
 }
+
+private const val EXIT_DOUBLE_TAP_WINDOW_MS = 2_000L
 
 private fun Context.closeApplication() {
     findActivity()?.finishAndRemoveTask()
