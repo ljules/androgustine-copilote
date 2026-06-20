@@ -1274,7 +1274,7 @@ private fun MapModeSelector(
         CockpitMapModeTab(
             label = "Vue OSM",
             selected = selectedMode == MapMode.OpenStreetMap,
-            selectedColor = Color(0xFFC8C8C8),
+            selectedColor = ShellOrange,
             onClick = { onModeSelected(MapMode.OpenStreetMap) },
             modifier = Modifier.weight(1f),
         )
