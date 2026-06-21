@@ -1002,10 +1002,17 @@ private fun CockpitCircuitMapPanel(
                 }
 
                 localCarPosition?.project()?.let { projected ->
-                    drawCircle(color = ShellOrange, radius = 9.dp.toPx(), center = projected)
+                    drawCircle(color = Color.White, radius = 11.dp.toPx(), center = projected)
+                    drawCircle(color = GpsVehicleMarkerColor, radius = 9.dp.toPx(), center = projected)
                 }
                 localGhostPosition?.project()?.let { projected ->
-                    drawCircle(color = Color(0xFFE7A2D6), radius = 9.dp.toPx(), center = projected)
+                    drawCircle(
+                        color = Color.White,
+                        radius = 10.dp.toPx(),
+                        center = projected,
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                    drawCircle(color = GhostMarkerColor, radius = 8.dp.toPx(), center = projected)
                 }
             }
         }
@@ -1683,8 +1690,8 @@ private fun CircuitMapCard(
         }
     }
     val circuitColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val carColor = MaterialTheme.colorScheme.error
-    val ghostColor = Color(0xFF1B7F3A)
+    val carColor = GpsVehicleMarkerColor
+    val ghostColor = GhostMarkerColor
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
     val segmentFallbackColors = listOf(
         Color.White,
@@ -1811,17 +1818,27 @@ private fun CircuitMapCard(
 
                         localCarPosition?.project()?.let { projected ->
                             drawCircle(
-                                color = carColor,
+                                color = Color.White,
+                                radius = 10.dp.toPx(),
+                                center = projected,
+                            )
+                            drawCircle(
+                                color = GpsVehicleMarkerColor,
                                 radius = 8.dp.toPx(),
                                 center = projected,
                             )
                         }
                         localGhostPosition?.project()?.let { projected ->
                             drawCircle(
-                                color = ghostColor,
-                                radius = 9.dp.toPx(),
+                                color = Color.White,
+                                radius = 10.dp.toPx(),
                                 center = projected,
-                                style = Stroke(width = 4.dp.toPx()),
+                                style = Stroke(width = 2.dp.toPx()),
+                            )
+                            drawCircle(
+                                color = GhostMarkerColor,
+                                radius = 8.dp.toPx(),
+                                center = projected,
                             )
                         }
                     }
@@ -2309,6 +2326,8 @@ private const val OSM_TRACK_STROKE_WIDTH = 6f
 private const val OSM_SEGMENT_STROKE_WIDTH = 12f
 private const val LON_DEGREE_METERS = 111_320.0
 private const val LAT_DEGREE_METERS = 110_540.0
+private val GpsVehicleMarkerColor = Color(0xFFE50914)
+private val GhostMarkerColor = Color(0x66B45AE8)
 
 @Preview(showBackground = true)
 @Composable
