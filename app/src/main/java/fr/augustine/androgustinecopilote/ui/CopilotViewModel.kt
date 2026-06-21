@@ -1,19 +1,22 @@
 package fr.augustine.androgustinecopilote.ui
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import fr.augustine.androgustinecopilote.data.CopilotInstructions
 import fr.augustine.androgustinecopilote.data.CopilotFirestoreRepository
 import fr.augustine.androgustinecopilote.data.CopilotFirestoreState
+import fr.augustine.androgustinecopilote.data.CopilotTelemetrySnapshot
 import fr.augustine.androgustinecopilote.data.FirestoreConnectionState
 import fr.augustine.androgustinecopilote.data.StrategyData
 import fr.augustine.androgustinecopilote.data.TrackData
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -88,9 +91,22 @@ class CopilotViewModel(
 ) : AndroidViewModel(application) {
     private val repository = CopilotFirestoreRepository(application)
     private val instructionState = MutableStateFlow(InstructionSendUiState())
+    private var lastTelemetrySnapshot: CopilotTelemetrySnapshot? = null
+    private var lastTelemetryReceivedAtMs: Long = 0L
 
-    val uiState: StateFlow<CopilotUiState> = repository.state
-        .combine(instructionState, ::toUiState)
+    private val chronoTicker = flow {
+        while (true) {
+            emit(SystemClock.elapsedRealtime())
+            delay(CHRONO_REFRESH_INTERVAL_MS)
+        }
+    }
+
+    val uiState: StateFlow<CopilotUiState> = combine(
+        repository.state,
+        instructionState,
+        chronoTicker,
+        ::toUiState,
+    )
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -181,9 +197,29 @@ class CopilotViewModel(
     private fun toUiState(
         state: CopilotFirestoreState,
         instructionsState: InstructionSendUiState,
+        nowMs: Long,
     ): CopilotUiState {
         val session = state.session
         val telemetry = state.telemetry
+        if (telemetry != null && telemetry != lastTelemetrySnapshot) {
+            lastTelemetrySnapshot = telemetry
+            lastTelemetryReceivedAtMs = nowMs
+        }
+        if (telemetry == null) {
+            lastTelemetrySnapshot = null
+            lastTelemetryReceivedAtMs = 0L
+        }
+        val elapsedSinceSnapshotS = ((nowMs - lastTelemetryReceivedAtMs).coerceAtLeast(0L) / 1_000.0)
+            .takeIf { lastTelemetryReceivedAtMs > 0L } ?: 0.0
+        val shouldSmoothChrono = isChronoActive(
+            sessionStatus = session?.status,
+            sessionRaceStarted = session?.raceStarted,
+            telemetry = telemetry,
+        )
+        val displayedElapsedSessionS = telemetry?.elapsedSessionS
+            ?.plus(if (shouldSmoothChrono) elapsedSinceSnapshotS else 0.0)
+        val displayedElapsedLapS = telemetry?.elapsedLapS
+            ?.plus(if (shouldSmoothChrono) elapsedSinceSnapshotS else 0.0)
 
         return CopilotUiState(
             firestoreStatus = state.connectionState.toDisplayText(),
@@ -204,8 +240,8 @@ class CopilotViewModel(
                 currentLap = telemetry?.currentLap,
                 totalLaps = session?.totalLaps,
             ),
-            sessionChrono = telemetry?.elapsedSessionS.formatChrono(),
-            lapChrono = telemetry?.elapsedLapS.formatChrono(),
+            sessionChrono = displayedElapsedSessionS.formatChrono(),
+            lapChrono = displayedElapsedLapS.formatChrono(),
             speedLabel = "${telemetry?.gpsSpeedKmh.formatDecimal(1)} km/h",
             heartRateLabel = "${telemetry?.heartRateBpm.format()} bpm",
             deltaGhostLabel = "${telemetry?.deltaDistanceM.formatMeters()} m",
@@ -265,6 +301,24 @@ class CopilotViewModel(
     }
 }
 
+private fun isChronoActive(
+    sessionStatus: String?,
+    sessionRaceStarted: Boolean?,
+    telemetry: CopilotTelemetrySnapshot?,
+): Boolean {
+    if (telemetry?.raceStarted == true || sessionRaceStarted == true) return true
+
+    val status = sessionStatus.orEmpty().uppercase(Locale.ROOT)
+    val activeStrategy = telemetry?.activeStrategy.orEmpty().uppercase(Locale.ROOT)
+    return listOf(status, activeStrategy).any {
+        it.contains("START") ||
+            it.contains("DEPART") ||
+            it.contains("RACE") ||
+            it.contains("COURSE") ||
+            it.contains("RUNNING")
+    }
+}
+
 private fun CopilotInstructions.toDisplayText(): String {
     return "$pilotPaceInstruction / $raceStatusInstruction / stand=$pitStopRequest"
 }
@@ -321,3 +375,5 @@ private fun Double?.formatRainPercent(): String {
     val percent = if (this in 0.0..1.0) this * 100 else this
     return "${String.format(Locale.FRANCE, "%.0f", percent)} %"
 }
+
+private const val CHRONO_REFRESH_INTERVAL_MS = 1_000L
