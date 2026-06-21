@@ -81,7 +81,7 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polyline
 import fr.augustine.androgustinecopilote.R
 import fr.augustine.androgustinecopilote.ui.theme.OxaniumFontFamily
@@ -1047,11 +1047,8 @@ private fun CockpitOpenStreetMapPanel(
         distanceM = snappedDistanceM,
         totalDistanceM = track?.totalDistanceM,
     )
-    val carPosition = if (gpsLat != null && gpsLon != null) {
-        GeoPoint(gpsLat, gpsLon)
-    } else {
-        snappedTrackPoint?.let { GeoPoint(it.lat, it.lon) }
-    }
+    val carPosition = snappedTrackPoint?.let { GeoPoint(it.lat, it.lon) }
+        ?: if (gpsLat != null && gpsLon != null) GeoPoint(gpsLat, gpsLon) else null
     val ghostPosition = positionAtDistance(
         points = trackPoints,
         distanceM = ghostDistanceM,
@@ -1119,22 +1116,20 @@ private fun CockpitOpenStreetMapPanel(
 
                     carPosition?.let { position ->
                         mapView.overlays.add(
-                            Marker(mapView).apply {
-                                this.position = position
-                                title = "Voiture"
-                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                                icon?.setTint(ShellOrange.toArgb())
-                            },
+                            CircleMarkerOverlay(
+                                position = position,
+                                fillColor = GpsVehicleMarkerColor.toArgb(),
+                                radiusPx = OSM_VEHICLE_MARKER_RADIUS_PX,
+                            ),
                         )
                     }
                     ghostPosition?.let { position ->
                         mapView.overlays.add(
-                            Marker(mapView).apply {
-                                this.position = position
-                                title = "Ghost"
-                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                                icon?.setTint(Color(0xFFE7A2D6).toArgb())
-                            },
+                            CircleMarkerOverlay(
+                                position = position,
+                                fillColor = GhostMarkerColor.toArgb(),
+                                radiusPx = OSM_GHOST_MARKER_RADIUS_PX,
+                            ),
                         )
                     }
 
@@ -1457,11 +1452,8 @@ private fun OpenStreetMapCard(
         distanceM = snappedDistanceM,
         totalDistanceM = track?.totalDistanceM,
     )
-    val carPosition = if (gpsLat != null && gpsLon != null) {
-        GeoPoint(gpsLat, gpsLon)
-    } else {
-        snappedTrackPoint?.let { GeoPoint(it.lat, it.lon) }
-    }
+    val carPosition = snappedTrackPoint?.let { GeoPoint(it.lat, it.lon) }
+        ?: if (gpsLat != null && gpsLon != null) GeoPoint(gpsLat, gpsLon) else null
     val ghostTrackPoint = positionAtDistance(
         points = trackPoints,
         distanceM = ghostDistanceM,
@@ -1571,23 +1563,21 @@ private fun OpenStreetMapCard(
 
                         carPosition?.let { position ->
                             mapView.overlays.add(
-                                Marker(mapView).apply {
-                                    this.position = position
-                                    title = "Voiture"
-                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                                    icon?.setTint(carColor)
-                                },
+                                CircleMarkerOverlay(
+                                    position = position,
+                                    fillColor = GpsVehicleMarkerColor.toArgb(),
+                                    radiusPx = OSM_VEHICLE_MARKER_RADIUS_PX,
+                                ),
                             )
                         }
 
                         ghostPosition?.let { position ->
                             mapView.overlays.add(
-                                Marker(mapView).apply {
-                                    this.position = position
-                                    title = "Ghost"
-                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                                    icon?.setTint(ghostColor)
-                                },
+                                CircleMarkerOverlay(
+                                    position = position,
+                                    fillColor = GhostMarkerColor.toArgb(),
+                                    radiusPx = OSM_GHOST_MARKER_RADIUS_PX,
+                                ),
                             )
                         }
 
@@ -2317,6 +2307,35 @@ private fun StrategySegment.toColor(fallbackColor: Color): Color {
     }
 }
 
+private class CircleMarkerOverlay(
+    private val position: GeoPoint,
+    private val fillColor: Int,
+    private val radiusPx: Float,
+) : Overlay() {
+    private val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.FILL
+        color = fillColor
+    }
+    private val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        color = android.graphics.Color.WHITE
+        strokeWidth = OSM_MARKER_STROKE_WIDTH_PX
+    }
+    private val projectedPoint = android.graphics.Point()
+
+    override fun draw(
+        canvas: android.graphics.Canvas,
+        mapView: MapView,
+        shadow: Boolean,
+    ) {
+        if (shadow) return
+
+        mapView.projection.toPixels(position, projectedPoint)
+        canvas.drawCircle(projectedPoint.x.toFloat(), projectedPoint.y.toFloat(), radiusPx, fillPaint)
+        canvas.drawCircle(projectedPoint.x.toFloat(), projectedPoint.y.toFloat(), radiusPx, strokePaint)
+    }
+}
+
 private const val SEGMENT_SAMPLE_STEP_M = 8.0
 private const val MIN_SEGMENT_SAMPLES = 2
 private const val MAX_SEGMENT_SAMPLES = 96
@@ -2324,6 +2343,9 @@ private const val DEFAULT_OSM_ZOOM = 17.0
 private const val OSM_BOUNDS_PADDING_PX = 64
 private const val OSM_TRACK_STROKE_WIDTH = 6f
 private const val OSM_SEGMENT_STROKE_WIDTH = 12f
+private const val OSM_VEHICLE_MARKER_RADIUS_PX = 10f
+private const val OSM_GHOST_MARKER_RADIUS_PX = 10f
+private const val OSM_MARKER_STROKE_WIDTH_PX = 3f
 private const val LON_DEGREE_METERS = 111_320.0
 private const val LAT_DEGREE_METERS = 110_540.0
 private val GpsVehicleMarkerColor = Color(0xFFE50914)
